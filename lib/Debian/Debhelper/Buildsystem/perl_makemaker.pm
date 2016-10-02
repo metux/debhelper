@@ -8,7 +8,7 @@ package Debian::Debhelper::Buildsystem::perl_makemaker;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(compat);
+use Debian::Debhelper::Dh_Lib qw(compat get_installation_directory);
 use parent qw(Debian::Debhelper::Buildsystem::makefile);
 use Config;
 
@@ -42,6 +42,8 @@ sub new {
 sub configure {
 	my $this=shift;
 	my (@flags, @perl_flags);
+	my $prefix = get_installation_directory('prefix');
+	push(@flags, '--prefix', $prefix) if $prefix ne '/usr';
 	# If set to a true value then MakeMaker's prompt function will
 	# # always return the default without waiting for user input.
 	$ENV{PERL_MM_USE_DEFAULT}=1;

@@ -8,7 +8,7 @@ package Debian::Debhelper::Buildsystem::perl_build;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(compat);
+use Debian::Debhelper::Dh_Lib qw(compat get_installation_directory);
 use parent qw(Debian::Debhelper::Buildsystem);
 use Config;
 
@@ -42,6 +42,8 @@ sub new {
 sub configure {
 	my $this=shift;
 	my (@flags, @perl_flags);
+	my $prefix = get_installation_directory('prefix');
+	push(@flags, '--prefix', $prefix) if $prefix ne '/usr';
 	$ENV{PERL_MM_USE_DEFAULT}=1;
 	if ($ENV{CFLAGS} && ! compat(8)) {
 		push @flags, "--config", "optimize=$ENV{CFLAGS} $ENV{CPPFLAGS}";

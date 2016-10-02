@@ -10,7 +10,7 @@ package Debian::Debhelper::Buildsystem::python_distutils;
 use strict;
 use warnings;
 use Cwd ();
-use Debian::Debhelper::Dh_Lib qw(error);
+use Debian::Debhelper::Dh_Lib qw(error get_installation_directory);
 use parent qw(Debian::Debhelper::Buildsystem);
 
 sub DESCRIPTION {
@@ -186,11 +186,15 @@ sub build {
 sub install {
 	my $this=shift;
 	my $destdir=shift;
+	my @flags;
+	my $prefix = get_installation_directory('prefix');
+	push(@flags, "--prefix=${prefix}") if $prefix ne '/usr';
 	$this->setup_py("install",
 		"--force",
 		"--root=$destdir",
 		"--no-compile",
 		"-O0",
+		@flags,
 		@_);
 }
 

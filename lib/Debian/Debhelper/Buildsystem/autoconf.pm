@@ -8,7 +8,8 @@ package Debian::Debhelper::Buildsystem::autoconf;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(dpkg_architecture_value sourcepackage compat);
+use Debian::Debhelper::Dh_Lib qw(dpkg_architecture_value sourcepackage compat
+	get_installation_directory);
 use parent qw(Debian::Debhelper::Buildsystem::makefile);
 
 sub DESCRIPTION {
@@ -26,18 +27,27 @@ sub check_auto_buildable {
 	return $this->SUPER::check_auto_buildable(@_);
 }
 
+sub _get_paths {
+	my ($this, @paths) = @_;
+	return map {
+		"--${_}=" . get_installation_directory($_, 'autoconf')
+	} @paths;
+}
+
 sub configure {
 	my $this=shift;
 
 	# Standard set of options for configure.
 	my @opts;
 	push @opts, "--build=" . dpkg_architecture_value("DEB_BUILD_GNU_TYPE");
-	push @opts, "--prefix=/usr";
-	push @opts, "--includedir=\${prefix}/include";
-	push @opts, "--mandir=\${prefix}/share/man";
-	push @opts, "--infodir=\${prefix}/share/info";
-	push @opts, "--sysconfdir=/etc";
-	push @opts, "--localstatedir=/var";
+	push(@opts, $this->_get_paths(qw(
+			prefix
+			includedir
+			mandir
+			infodir
+			sysconfdir
+			localstatedir
+		)));
 	if (defined $ENV{DH_QUIET} && $ENV{DH_QUIET} ne "") {
 		push @opts, "--enable-silent-rules";
 	} else {

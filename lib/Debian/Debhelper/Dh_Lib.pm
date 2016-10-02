@@ -69,8 +69,33 @@ our (@EXPORT, %dh);
 	    &compute_doc_main_package &is_so_or_exec_elf_file &hostarch
 	    &assert_opt_is_known_package &dbgsym_tmpdir &find_hardlinks
 	    &should_use_root &gain_root_cmd DEFAULT_PACKAGE_TYPE
-	    DBGSYM_PACKAGE_TYPE
+	    DBGSYM_PACKAGE_TYPE &get_installation_directory
+	    &get_rel_installation_directory
 );
+
+
+# Our default paths for upstream build-systems.  Uses the same names
+# as autoconf's configure scripts (where applicable).
+# Ideally derivatives would be able to override these without having
+# to modify debhelper
+my %INSTALLATION_DIRECTORIES = (
+	'prefix'        => '/usr',
+	'eprefix'       => '${prefix}',
+	'bindir'        => '${eprefix}/bin',
+	'sbindir'       => '${eprefix}/sbin',
+	'sysconfdir'    => '/etc',
+	'localstatedir' => '/var',
+	'runstatedir'   => '/run',
+	#'libdir'        => '${eprefix}/lib/${DEB_BUILD_MULTIARCH}',
+	'includedir'    => '${prefix}/include',
+	'datarootdir'   => '${prefix}/share',
+	'datadir'       => '${datarootdir}',
+	'mandir'        => '${datarootdir}/man',
+	'infodir'       => '${datarootdir}/info',
+	'dh_docrootdir' => '${datarootdir}/doc', # Not from autotols (made up to support debhelper)
+#	'docdir'        => '${dh_docroot}/${package}' # debhelper assumes docdir is a direct subdir of dh_docdir
+);
+
 
 # The Makefile changes this if debhelper is installed in a PREFIX.
 my $prefix="/usr";
@@ -2223,6 +2248,55 @@ sub dbgsym_tmpdir {
 		}
 		return 1;
 	}
+}
+
+{
+	# Our default paths for upstream build-systems.  Uses the same names
+	# as autoconf's configure scripts (where applicable).
+	# Ideally derivatives would be able to override these without having
+	# to modify debhelper
+	my %INSTALLATION_DIRECTORIES;
+
+	sub _init_paths {
+		%INSTALLATION_DIRECTORIES = (
+			 'prefix'        => '/usr',
+			 'eprefix'       => '${prefix}',
+			 'bindir'        => '${eprefix}/bin',
+			 'sbindir'       => '${eprefix}/sbin',
+			 'sysconfdir'    => '/etc',
+			 'localstatedir' => '/var',
+			 'runstatedir'   => '/run',
+			 #'libdir'        => '${eprefix}/lib/${DEB_BUILD_MULTIARCH}',
+			 'includedir'    => '${prefix}/include',
+			 'datarootdir'   => '${prefix}/share',
+			 'datadir'       => '${datarootdir}',
+			 'mandir'        => '${datarootdir}/man',
+			 'infodir'       => '${datarootdir}/info',
+			 'dh_docrootdir' => '${datarootdir}/doc', # Not from autotols (made up to support debhelper)
+			 #	'docdir'        => '${dh_docroot}/${package}' # debhelper assumes docdir is a direct subdir of dh_docdir
+		);
+	}
+
+	sub get_installation_directory {
+		my ($path_type, $style) = @_;
+		_init_paths if not %INSTALLATION_DIRECTORIES;
+		my $path = $INSTALLATION_DIRECTORIES{$path_type} // error("No path defined for $path_type\n");
+		my $expand = 0;
+		$expand = 1 if not defined($style) or $style ne 'autoconf';
+		if ($expand) {
+			1 while ($path =~ s<
+				    \$\{([^{}]+)\}  # Turn ${prefix}/lib into /usr/lib
+				><
+				    $INSTALLATION_DIRECTORIES{$1} // error("Cannot resolve $1 for $path_type\n")
+				>gex);
+		}
+		return $path;
+	}
+}
+
+sub get_rel_installation_directory {
+	my $res = get_installation_directory(@_);
+	return substr($res, 1);
 }
 
 1

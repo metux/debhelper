@@ -8,15 +8,13 @@ package Debian::Debhelper::Buildsystem::cmake;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(compat dpkg_architecture_value error is_cross_compiling);
+use Debian::Debhelper::Dh_Lib qw(compat dpkg_architecture_value error is_cross_compiling
+	get_installation_directory);
 use parent qw(Debian::Debhelper::Buildsystem::makefile);
 
 my @STANDARD_CMAKE_FLAGS = qw(
-  -DCMAKE_INSTALL_PREFIX=/usr
   -DCMAKE_VERBOSE_MAKEFILE=ON
   -DCMAKE_BUILD_TYPE=None
-  -DCMAKE_INSTALL_SYSCONFDIR=/etc
-  -DCMAKE_INSTALL_LOCALSTATEDIR=/var
   -DCMAKE_EXPORT_NO_PACKAGE_REGISTRY=ON
   -DCMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY=ON
 );
@@ -53,10 +51,21 @@ sub new {
 	return $this;
 }
 
+sub _get_path {
+	my ($this, $cmake_flag, $dh_name) = @_;
+	my $path = get_installation_directory($dh_name);
+	return ("-D${cmake_flag}=${path}");
+}
+
 sub configure {
 	my $this=shift;
 	# Standard set of cmake flags
-	my @flags = @STANDARD_CMAKE_FLAGS;
+	my @flags = (
+		$this->_get_path('CMAKE_INSTALL_PREFIX', 'prefix'),
+		$this->_get_path('CMAKE_INSTALL_SYSCONFDIR', 'sysconfdir'),
+		$this->_get_path('CMAKE_INSTALL_LOCALSTATEDIR', 'localstatedir'),
+		@STANDARD_CMAKE_FLAGS
+	);
 
 	if (not compat(10)) {
 		push(@flags, '-DCMAKE_INSTALL_RUNSTATEDIR=/run');

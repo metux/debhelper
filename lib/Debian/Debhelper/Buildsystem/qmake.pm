@@ -8,7 +8,8 @@ package Debian::Debhelper::Buildsystem::qmake;
 
 use strict;
 use warnings;
-use Debian::Debhelper::Dh_Lib qw(dpkg_architecture_value error generated_file is_cross_compiling);
+use Debian::Debhelper::Dh_Lib qw(dpkg_architecture_value error generated_file is_cross_compiling
+  get_installation_directory);
 use parent qw(Debian::Debhelper::Buildsystem::makefile);
 
 our $qmake="qmake";
@@ -53,8 +54,7 @@ sub check_auto_buildable {
 
 sub configure {
 	my $this=shift;
-	my @options;
-	my @flags;
+	my (@options, @flags, $prefix);
 
 	push @options, '-makefile';
 	if (is_cross_compiling()) {
@@ -112,7 +112,8 @@ sub configure {
 		push @flags, "QMAKE_LFLAGS_DEBUG=$ENV{LDFLAGS}";
 	}
 	push @flags, "QMAKE_STRIP=:";
-	push @flags, "PREFIX=/usr";
+	$prefix = get_installation_directory('prefix');
+	push(@flags, "PREFIX=${prefix}");
 
 	if (is_cross_compiling()) {
 		# qmake calls $$QMAKE_CXX in toolchain.prf to get a list of library/include paths,

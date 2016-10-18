@@ -1061,7 +1061,11 @@ sub can_skip {
 			if ($type eq 'tmp') {
 				foreach my $package (@packages) {
 					my $tmp = tmpdir($package);
-					return 0 if -e "$tmp/$need";
+					my $path = $need;
+					if (substr($need, 0, 1) eq '$') {
+						$path = get_rel_installation_directory(substr($need, 1));
+					}
+					return 0 if -e "${tmp}/${path}";
 				}
 			} elsif ($type eq 'pkgfile' or $type eq 'pkgfile-logged') {
 				my $pkgs;

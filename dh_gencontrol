@@ -94,16 +94,16 @@ sub guess_multiarch {
 		return 'foreign';
 	} else {
 		my $ma_dir = dpkg_architecture_value('DEB_HOST_MULTIARCH');
+		my $host_arch = dpkg_architecture_value('DEB_HOST_ARCH');
 		my $ma_guess = 'same';
-		my @MA_OK_USR_SHARE_DOC_FILES = qw(
+		my @MA_OK_USR_SHARE_DOC_FILES = (qw(
 			AUTHORS AUTHORS.gz BUGS BUGS.gz CREDITS CREDITS.gz
-			buildinfo_$arch.gz changelog.gz changelog.Debian.gz
-			changelog.Debian.$arch.gz copyright LGPL_EXCEPTION.txt
+			changelog.gz changelog.Debian.gz copyright LGPL_EXCEPTION.txt
 			NEWS NEWS.gz NEWS.Debian NEWS.Debian.gz README README.gz
 			README.markdown README.markdown.gz README.md README.md.gz
 			README.txt README.txt.gz THANKS THANKS.gz TODO TODO.gz
 			TODO.Debian TODO.Debian.gz
-		);
+		), "buildinfo_${host_arch}.gz", "changelog.Debian.${host_arch}.gz");
 		my %MA_OK_PATHS = (
 			'DEBIAN' => 'prune',
 			'usr' => 'continue',
@@ -136,7 +136,8 @@ sub guess_multiarch {
 				s@/+$@@;
 				return if $_ eq q{};
 				my $verdict = $MA_OK_PATHS{$_} // 'bail';
-				verbose_print("Path $_: ${verdict}");
+				# Printf debugging
+				# verbose_print("Path $_: ${verdict}");
 				return if $verdict eq 'continue';
 				$File::Find::prune = 1;
 				$ma_guess = undef if $verdict ne 'prune';
@@ -190,8 +191,21 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 		$build_ids = read_dbgsym_build_ids($dbgsym_info_dir);
 	}
 
+	my $multiarch = package_multiarch($package);
+	if (defined($multiarch)) {
+		# Remove explicit "Multi-Arch: no" headers to avoid autorejects by dak.
+		push (@multiarch_params, '-UMulti-Arch') if $multiarch eq 'no';
+	} elsif (not compat(10)) {
+		# No explicit M-A header? Attempt to derive one
+		$multiarch = guess_multiarch($package);
+		push (@multiarch_params, "-DMulti-Arch=${multiarch}")
+			if defined($multiarch);
+		# Ensure it is defined from here on
+		$multiarch //= 'no';
+	}
+
+
 	if ( -d $dbgsym_tmp) {
-		my $multiarch = package_multiarch($package, 'no');
 		my $section = package_section($package);
 		my $replaces = read_dbgsym_migration($dbgsym_info_dir);
 		my $component = '';
@@ -239,16 +253,6 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 		# there is a dbgsym package, the build-ids into the control
 		# file of the dbgsym package)
 		push(@debug_info_params, "-DBuild-Ids=${build_ids}");
-	}
-
-	if (defined(my $ma = package_multiarch($package))) {
-		# Remove explicit "Multi-Arch: no" headers to avoid autorejects by dak.
-		push (@multiarch_params, '-UMulti-Arch') if $ma eq 'no';
-	} elsif (not compat(10)) {
-		# No explicit M-A header? Attempt to derive one
-		my $multiarch_guess = guess_multiarch($package);
-		push (@multiarch_params, "-DMulti-Arch=${multiarch_guess}")
-			if defined($multiarch_guess);
 	}
 
 	# Generate and install control file.

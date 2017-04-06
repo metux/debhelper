@@ -54,7 +54,6 @@ init(options => {
 	"dpkg-gencontrol-params=s", => \$dh{U_PARAMS},
 });
 
-
 sub guess_multiarch {
 	my ($package) = @_;
 
@@ -94,6 +93,55 @@ sub guess_multiarch {
 		# No maintainer scripts. No dependencies.
 		return 'foreign';
 	} else {
+		my $ma_dir = dpkg_architecture_value('DEB_HOST_MULTIARCH');
+		my $ma_guess = 'same';
+		my @MA_OK_USR_SHARE_DOC_FILES = qw(
+			AUTHORS AUTHORS.gz BUGS BUGS.gz CREDITS CREDITS.gz
+			buildinfo_$arch.gz changelog.gz changelog.Debian.gz
+			changelog.Debian.$arch.gz copyright LGPL_EXCEPTION.txt
+			NEWS NEWS.gz NEWS.Debian NEWS.Debian.gz README README.gz
+			README.markdown README.markdown.gz README.md README.md.gz
+			README.txt README.txt.gz THANKS THANKS.gz TODO TODO.gz
+			TODO.Debian TODO.Debian.gz
+		);
+		my %MA_OK_PATHS = (
+			'DEBIAN' => 'prune',
+			'usr' => 'continue',
+			'usr/include' => 'continue',
+			"usr/include/$ma_dir" => 'prune',
+			'usr/lib' => 'continue',
+			"usr/lib/$ma_dir" => 'prune',
+			'usr/lib/debug' => 'continue',
+			'usr/lib/debug/lib' => 'continue',
+			"usr/lib/debug/lib/$ma_dir" => 'prune',
+			'usr/lib/debug/usr' => 'continue',
+			'usr/lib/debug/usr/lib' => 'continue',
+			"usr/lib/debug/usr/lib/$ma_dir" => 'prune',
+			'usr/lib/debug/.build-id' => 'prune',
+			'usr/share' => 'continue',
+			'usr/share/doc' => 'continue',
+			"usr/share/doc/${package}" => 'continue',
+			"usr/share/doc/${package}" => 'continue',
+			'usr/share/lintian' => 'continue',
+			'usr/share/lintian/overrides' => 'continue',
+			"usr/share/lintian/overrides/${package}" => 'continue',
+		);
+		for my $file (@MA_OK_USR_SHARE_DOC_FILES) {
+			$MA_OK_PATHS{"usr/share/doc/${package}/$file"} = 'continue';
+		}
+		find({
+			no_chdir => 1,
+			wanted => sub {
+				s@${tmp}/?@@g;
+				s@/+$@@;
+				return if $_ eq q{};
+				my $verdict = $MA_OK_PATHS{$_} // 'bail';
+				verbose_print("Path $_: ${verdict}");
+				return if $verdict eq 'continue';
+				$File::Find::prune = 1;
+				$ma_guess = undef if $verdict ne 'prune';
+			},
+		}, $tmp);
 		# traverse "$tmpdir"
 		# files that are ok:
 		# * /DEBIAN/*
@@ -108,8 +156,7 @@ sub guess_multiarch {
 		#     TODO.Debian TODO.Debian.gz
 		# * /usr/share/lintian/overrides/$package
 		# * /usr/lib/debug/.build-id/*
-		return; # until the above is implemented
-		return "same";
+		return $ma_guess ;
 	}
 	return;
 }

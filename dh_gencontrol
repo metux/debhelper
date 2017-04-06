@@ -8,6 +8,7 @@ dh_gencontrol - generate and install control file
 
 use strict;
 use warnings;
+use File::Find;
 use Debian::Debhelper::Dh_Lib;
 
 =head1 SYNOPSIS
@@ -54,6 +55,65 @@ init(options => {
 });
 
 
+sub guess_multiarch {
+	my ($package) = @_;
+
+	my $tmp = tmpdir($package);
+	# Give up guessing when maintainer scripts are involved.
+	foreach my $script (qw{postinst preinst prerm postrm}) {
+		return if -f "$tmp/DEBIAN/$script";
+	}
+
+	my $arch = package_arch($package);
+	if ($arch eq 'all') {
+
+		open (my $fd, '<', 'debian/control') ||
+			error("cannot read debian/control: $!\n");
+		my $cur_pkg;
+		my $cur_deps;
+		while (<$fd>) {
+			chomp;
+			s/\s+$//;
+			$cur_pkg = $1 if (/^Package:\s+(.*)/i);
+			# In theory, we'd want to traverse dependencies and
+			# ignore any that are annotated :any or known
+			# m-a:foreign (e.g. dpkg).
+			$cur_deps = 1 if (/^(Pre-)?Depends:/i);
+			if (!$_ or eof) { # end of stanza.
+				if ($cur_pkg eq $package and $cur_deps) {
+					close($fd);
+					# Give up on encountering a dependency.
+					return;
+				}
+				$cur_pkg = undef;
+				$cur_deps = undef;
+			}
+		}
+		close($fd);
+
+		# No maintainer scripts. No dependencies.
+		return 'foreign';
+	} else {
+		# traverse "$tmpdir"
+		# files that are ok:
+		# * /DEBIAN/*
+		# * /(lib|usr/include|usr/lib|usr/lib/debug/lib|usr/lib/debug/usr/lib)/<triplet>/*
+		# * /usr/share/doc/$package/$thing with $thing from
+		#   + AUTHORS AUTHORS.gz BUGS BUGS.gz CREDITS CREDITS.gz
+		#     buildinfo_$arch.gz changelog.gz changelog.Debian.gz
+		#     changelog.Debian.$arch.gz copyright LGPL_EXCEPTION.txt
+		#     NEWS NEWS.gz NEWS.Debian NEWS.Debian.gz README README.gz
+		#     README.markdown README.markdown.gz README.md README.md.gz
+		#     README.txt README.txt.gz THANKS THANKS.gz TODO TODO.gz
+		#     TODO.Debian TODO.Debian.gz
+		# * /usr/share/lintian/overrides/$package
+		# * /usr/lib/debug/.build-id/*
+		return; # until the above is implemented
+		return "same";
+	}
+	return;
+}
+
 foreach my $package (@{$dh{DOPACKAGES}}) {
 	my $tmp=tmpdir($package);
 	my $ext=pkgext($package);
@@ -84,7 +144,7 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 	}
 
 	if ( -d $dbgsym_tmp) {
-		my $multiarch = package_multiarch($package);
+		my $multiarch = package_multiarch($package, 'no');
 		my $section = package_section($package);
 		my $replaces = read_dbgsym_migration($dbgsym_info_dir);
 		my $component = '';
@@ -134,9 +194,15 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 		push(@debug_info_params, "-DBuild-Ids=${build_ids}");
 	}
 
-	# Remove explicit "Multi-Arch: no" headers to avoid autorejects by dak.
-	push (@multiarch_params, '-UMulti-Arch')
-		if (package_multiarch($package) eq 'no');
+	if (defined(my $ma = package_multiarch($package))) {
+		# Remove explicit "Multi-Arch: no" headers to avoid autorejects by dak.
+		push (@multiarch_params, '-UMulti-Arch') if $ma eq 'no';
+	} elsif (not compat(10)) {
+		# No explicit M-A header? Attempt to derive one
+		my $multiarch_guess = guess_multiarch($package);
+		push (@multiarch_params, "-DMulti-Arch=${multiarch_guess}")
+			if defined($multiarch_guess);
+	}
 
 	# Generate and install control file.
 	doit("dpkg-gencontrol", "-p$package", "-l$changelog", "-T$substvars",

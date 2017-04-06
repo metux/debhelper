@@ -1051,18 +1051,18 @@ sub package_arch {
 	return $package_arches{$package} eq 'all' ? "all" : buildarch();
 }
 
-# Returns the multiarch value of a package.
+# Returns the multiarch value of a package (or undef if absent)
 sub package_multiarch {
-	my $package=shift;
+	my ($package, $default) = @_;
 
 	# Test the architecture field instead, as it is common for a
 	# package to not have a multi-arch value.
 	if (! exists $package_arches{$package}) {
 		warning "package $package is not in control info";
 		# The only sane default
-		return 'no';
+		return $default;
 	}
-	return $package_multiarches{$package} // 'no';
+	return $package_multiarches{$package} // $default;
 }
 
 # Returns the (raw) section value of a package (possibly including component).

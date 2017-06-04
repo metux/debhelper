@@ -77,7 +77,7 @@ Debian policy, version 3.0
 
 init();
 
-my $olddir;
+my (@bulk_compress, $olddir);
 
 foreach my $package (@{$dh{DOPACKAGES}}) {
 	my $tmp=tmpdir($package);
@@ -187,10 +187,19 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 
 	# do it
 	if (@f) {
-		# Make executables not be anymore.
-		xargs(\@f,"chmod","a-x");
-		
-		xargs(\@f,"gzip","-9nf");
+		if (%hardlinks) {
+			# There are hardlinks involved, so perform the compression
+			# now.
+			xargs(\@f, 'chmod', 'a-x');
+			xargs(\@f, 'gzip', '-9nf');
+		} else {
+			# No hardlinks - we can defer these to later and do a bulk
+			# compression (with other packages).
+			#
+			# It avoids a significant overhead for a source with many
+			# small binary packages.
+			push(@bulk_compress, map { "${tmp}/$_" } @f);
+		}
 	}
 	
 	# Now change over any files we can that used to be hard links so
@@ -204,7 +213,37 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 
 	verbose_print("cd '$olddir'");
 	chdir($olddir);
+}
 
+if (@bulk_compress) {
+	my $parallel = get_buildoption('parallel') || 1;
+	xargs(\@bulk_compress, 'chmod', 'a-x');
+	if ($parallel > 1) {
+		my $count = scalar(@bulk_compress) / $parallel;
+		# Account for parallel being greater than the files to
+		# compress
+		$count = 2 if $count < 2;
+		# If the count is "too high", then just split it in 100
+		# chunks.  It is probably more self-balancing as not all files
+		# are equally expensive to compress.
+		$count = 100 if $count > 100;
+		my @cmd = ('xargs', '-0r', '-P', $parallel, '-L', $count, 'gzip', '-9nf');
+		verbose_print(escape_shell(@cmd));
+		open(my $fd, '|-', @cmd) or error("fork+exec xargs: $!");
+		for my $file (@bulk_compress) {
+			printf {$fd} "%s\0", $file;
+		}
+		if (not close($fd)) {
+			error("Cannot close handle from xargs: $!") if $!;
+			error_exitcode(join(' ', @cmd));
+		}
+	} else {
+		xargs(\@bulk_compress, 'gzip', '-9nf');
+	}
+}
+
+foreach my $package (@{$dh{DOPACKAGES}}) {
+	my $tmp=tmpdir($package);
 	# Fix up symlinks that were pointing to the uncompressed files.
 	my %links = map { chomp; $_ => 1 } `find $tmp -type l`;
 	my $changed;

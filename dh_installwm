@@ -75,6 +75,8 @@ if (@ARGV) {
 	}
 }
 
+my $error_handler = compat(10) ? \&glob_expand_error_handler_warn_and_discard : \&glob_expand_error_handler_reject;
+
 # PROMISE: DH NOOP WITHOUT wm
 
 foreach my $package (@{$dh{DOPACKAGES}}) {
@@ -83,7 +85,7 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 
 	my @wm;
 	if ($file) {
-		@wm=filearray($file, '.');
+		@wm=filearray($file, ['.'], $error_handler);
 	}
 
 	if (($package eq $dh{FIRSTPACKAGE} || $dh{PARAMS_ALL}) && @ARGV) {

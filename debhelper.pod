@@ -671,6 +671,13 @@ directory for all packages.  This will not affect packages that only
 build with debhelper commands, but it may expose bugs in commands not
 included in debhelper.
 
+=item -
+
+The helpers B<dh_installdocs>, B<dh_installexamples>, B<dh_installinfo>,
+B<dh_installman>, and B<dh_installwm> now error out if their config has
+a pattern that does not match anything or reference a path that does not
+exist.
+
 =back
 
 =back

@@ -76,6 +76,9 @@ if (@ARGV) {
 }
 
 my $error_handler = compat(10) ? \&glob_expand_error_handler_warn_and_discard : \&glob_expand_error_handler_reject;
+my $nodocs = is_build_profile_active('nodoc') ? 1 : 0;
+# We cannot assume documentation is built under nodoc
+$error_handler = \&glob_expand_error_handler_silently_ignore if $nodocs;
 
 # PROMISE: DH NOOP WITHOUT wm
 
@@ -106,8 +109,10 @@ WM:		foreach my $wm (@wm) {
 					}
 				}
 			}
-			if (! compat(9)) {
+			if (not compat(9) and not $nodocs) {
 				error("no manpage found (creating an x-window-manager alternative requires a slave symlink for the manpage)");
+			} else {
+				warning("no manpage found (creating an x-window-manager alternative requires a slave symlink for the manpage)");
 			}
 			# Reaching this code means a broken package will be produced.
 			autoscript($package,"postinst","postinst-wm-noman","s:#WM#:$wm:g;s/#PRIORITY#/$dh{PRIORITY}/g",);

@@ -65,7 +65,7 @@ our (@EXPORT, %dh);
 	    &glob_expand_error_handler_silently_ignore DH_BUILTIN_VERSION
 	    &print_and_complex_doit &default_sourcedir &qx_cmd
 	    &compute_doc_main_package &is_so_or_exec_elf_file
-	    &assert_opt_is_known_package &should_use_root
+	    &assert_opt_is_known_package &should_use_root &gain_root_cmd
 );
 
 # The Makefile changes this if debhelper is installed in a PREFIX.
@@ -1434,6 +1434,13 @@ sub should_use_root {
 	return 0 if not defined($keyword);
 	return 1 if exists($rrr{$keyword});
 	return 0;
+}
+
+# Returns the "gain root command" as a list suitable for passing as a part of the command to "doit()"
+sub gain_root_cmd {
+	my $raw_cmd = $ENV{DPKG_GAIN_ROOT_CMD};
+	return if not defined($raw_cmd) or $raw_cmd =~ m/^\s*+$/;
+	return split(' ', $raw_cmd);
 }
 
 sub root_requirements {

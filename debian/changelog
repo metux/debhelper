@@ -1,3 +1,9 @@
+debhelper (10.10.5~bpo9+1) UNRELEASED; urgency=medium
+
+  * Rebuild for stretch-backports.
+
+ -- Niels Thykier <niels@thykier.net>  Wed, 01 Nov 2017 07:04:41 +0000
+
 debhelper (10.10.5) unstable; urgency=medium
 
   * meson.pm: Add missing import of generated_file that broke

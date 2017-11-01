@@ -3,6 +3,8 @@ debhelper (10.10.5~bpo9+1) UNRELEASED; urgency=medium
   * Rebuild for stretch-backports.
   * Dh_Lib: Disable R³ support as we need dpkg{,-dev} (>= 1.19.0.4)
     for that.
+  * d/control: Remove the R³ field; debhelper in backports cannot
+    be built without (fake)root.
 
  -- Niels Thykier <niels@thykier.net>  Wed, 01 Nov 2017 07:04:41 +0000
 

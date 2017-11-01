@@ -1,4 +1,4 @@
-debhelper (10.10.5~bpo9+1) UNRELEASED; urgency=medium
+debhelper (10.10.5~bpo9+1) stretch-backports; urgency=medium
 
   * Rebuild for stretch-backports.
   * Dh_Lib: Disable R³ support as we need dpkg{,-dev} (>= 1.19.0.4)
@@ -8,7 +8,7 @@ debhelper (10.10.5~bpo9+1) UNRELEASED; urgency=medium
   * d/control: Reset versioned (Build-)Depends on dpkg and dpkg-dev
     due to the above.
 
- -- Niels Thykier <niels@thykier.net>  Wed, 01 Nov 2017 07:04:41 +0000
+ -- Niels Thykier <niels@thykier.net>  Wed, 01 Nov 2017 19:34:20 +0000
 
 debhelper (10.10.5) unstable; urgency=medium
 

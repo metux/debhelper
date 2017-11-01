@@ -25,7 +25,7 @@ use constant {
 	'DH_BUILTIN_VERSION' => \'<DH_LIB_VERSION>', #'# Hi emacs.
 
 	# Kill-switch for R³ (for backports)
-	'DH_ENABLE_RRR_SUPPORT' => 1,
+	'DH_ENABLE_RRR_SUPPORT' => 0,
 };
 
 my %NAMED_COMPAT_LEVELS = (

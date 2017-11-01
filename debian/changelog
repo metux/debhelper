@@ -1,3 +1,104 @@
+debhelper (10.10.5) unstable; urgency=medium
+
+  * meson.pm: Add missing import of generated_file that broke
+    cross building.
+  * Dh_Lib: Fix regression where an empty line before the source
+    paragraph in d/control would cause parse error.
+    (Closes: #879762)
+
+ -- Niels Thykier <niels@thykier.net>  Thu, 26 Oct 2017 19:10:51 +0000
+
+debhelper (10.10.4) unstable; urgency=medium
+
+  * meson.pm: Keep the meson cross file until dh_clean is
+    called as otherwise ninja tries and fails to regenerate the
+    build rules.  Thanks to Helmut Grohne for reporting the
+    bug.  (Closes: #879658)
+  * dh_dwz: Add new experimental tool to run dwz(1) to deduplicate
+    ELF debugging symbols.  It should be generally be run before
+    dh_strip (as dh_strip compresses the debug symbols and dwz
+    expects uncompressed debug symbols).  (Closes: #878888)
+  * dwz.pm: New sequence to add dh_dwz to the sequence.
+  * d/control: Add a Suggets on dwz for the optional dh_dwz tool.
+  * Dh_Lib.pm: Fix regression where the source section would not
+    be parsed leading to dbgsym packages possibly getting an
+    incorrect value in the Section field.  Thanks to Mihai
+    Moldovan for reporting the issue.  (Closes: #879667)
+
+ -- Niels Thykier <niels@thykier.net>  Wed, 25 Oct 2017 06:00:13 +0000
+
+debhelper (10.10.3) unstable; urgency=medium
+
+  * dh_strip: Skip the entire directory when an exclude rule
+    parameter matches it.
+  * dh_fixperms: Improve the documentation to assume less familarity
+    with "Rules-Requires-Root" (R³).
+  * dh_usrlocal: Ditto.
+  * dh_builddeb: Ditto.
+  * dh_usrlocal: Correct the group name when creating directories
+    owned by "root:staff".  Thanks to Paul Gevers for reporting
+    the bug.  (Closes: #879643)
+  * dh_usrlocal: Fix inverted boolean logic that made dh_usrlocal
+    ignore ownership of directories when it should have preserved
+    them.
+
+ -- Niels Thykier <niels@thykier.net>  Mon, 23 Oct 2017 21:24:08 +0000
+
+debhelper (10.10.2) unstable; urgency=medium
+
+  * Dh_Lib: Fix uninitialized warning in find_hardlinks that
+    broke dh_compress's ability to deal with hardlinks.  Thanks
+    to Ondřej Surý for finding the bug.
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 22 Oct 2017 21:21:58 +0000
+
+debhelper (10.10.1) unstable; urgency=medium
+
+  * debhelper.pod: Document that all tools by default must be run
+    in the root of an unpacked source.
+  * dh: Clarify that --list can be run anywhere.
+  * dh_testroot: Temporarily cope with being run outside a source
+    root.  (Closes: #879478)
+  * dh_testroot: Update manpage to mention its new scope.
+  * d/control: Bump (build-)dependency on dpkg to 1.19.0.3~.  That
+    was technically necessary already in the previous upload.
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 22 Oct 2017 09:00:12 +0000
+
+debhelper (10.10) unstable; urgency=medium
+
+  * dh_installsystemd: Improve error messages to include the actual
+    error caused by attempted to open the file.
+  * dh_systemd_enable: Ditto.
+  * dh_systemd_start: Ditto.
+  * dh_installinit: In compat 12, error out if an upstart init file
+    is provided with a reminder message about how to remove the
+    obsolete conffile.  (Closes: #876453)
+  * dh_systemd_enable: Permit missing explicitly requested file in
+    package as long as another on being acted on ships it.
+    (Closes: #878911)
+  * dh_systemd_start: Ditto.
+  * Dh_Lib.pm: Add support for R³ (Rules-Requires-Root field) to
+    enable package builds without requiring root (or only
+    selectively require root).
+  * dh_fixperms: Skip "chown" calls when R³ is set to anything but
+    "binary-targets".
+  * dh_installchangelogs: Ditto.
+  * dh_installdocs: Ditto.
+  * dh_testroot: Update check for root to support R³.
+  * makefile.pm: Call "make install" with DPKG_GAIN_ROOT_CMD when
+    R³ contains the "debhelper/upstream-make-install" keyword.
+  * dh_builddeb: Pass --root-owner-group to dpkg-deb in packages
+    with R³ (except for "binary-targets").
+  * dh_usrlocal: When R³ is enabled (and not "binary-targets"),
+    ignore the ownership/mode information on the directories.
+    Instead, the ownership "root:staff" and the mode 02775 is used.
+  * d/control: Bump (Build-)Dependency on dpkg-dev to support to
+    support R³.
+  * d/control: Set R³ to "no".
+
+ -- Niels Thykier <niels@thykier.net>  Sat, 21 Oct 2017 17:59:46 +0000
+
 debhelper (10.9.2~bpo9+1) stretch-backports; urgency=medium
 
   * Rebuild for stretch-backports.

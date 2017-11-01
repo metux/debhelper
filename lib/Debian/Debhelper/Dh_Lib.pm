@@ -23,6 +23,9 @@ use constant {
 	'XARGS_INSERT_PARAMS_HERE' => \'<INSERT-HERE>', #'# Hi emacs.
 	# Magic value for debhelper tools to request "current version"
 	'DH_BUILTIN_VERSION' => \'<DH_LIB_VERSION>', #'# Hi emacs.
+
+	# Kill-switch for R³ (for backports)
+	'DH_ENABLE_RRR_SUPPORT' => 1,
 };
 
 my %NAMED_COMPAT_LEVELS = (
@@ -65,7 +68,8 @@ our (@EXPORT, %dh);
 	    &glob_expand_error_handler_silently_ignore DH_BUILTIN_VERSION
 	    &print_and_complex_doit &default_sourcedir &qx_cmd
 	    &compute_doc_main_package &is_so_or_exec_elf_file
-	    &assert_opt_is_known_package
+	    &assert_opt_is_known_package &dbgsym_tmpdir &find_hardlinks
+	    &should_use_root &gain_root_cmd
 );
 
 # The Makefile changes this if debhelper is installed in a PREFIX.
@@ -505,6 +509,7 @@ sub rename_path {
 sub reset_perm_and_owner {
 	my ($mode, @paths) = @_;
 	my $_mode;
+	my $use_root = should_use_root();
 	# Dark goat blood to tell 0755 from "0755"
 	if (length( do { no warnings "numeric"; $mode & "" } ) ) {
 		# 0755, leave it alone.
@@ -515,12 +520,14 @@ sub reset_perm_and_owner {
 	}
 	if ($dh{VERBOSE}) {
 		verbose_print(sprintf('chmod %#o -- %s', $_mode, escape_shell(@paths)));
-		verbose_print(sprintf('chown 0:0 -- %s', escape_shell(@paths)));
+		verbose_print(sprintf('chown 0:0 -- %s', escape_shell(@paths))) if $use_root;
 	}
 	return if $dh{NO_ACT};
 	for my $path (@paths) {
 		chmod($_mode, $path) or error(sprintf('chmod(%#o, %s): %s', $mode, $path, $!));
-		chown(0, 0, $path) or error("chown(0, 0, $path): $!");
+		if ($use_root) {
+			chown(0, 0, $path) or error("chown(0, 0, $path): $!");
+		}
 	}
 }
 
@@ -1022,6 +1029,9 @@ sub autoscript_sed {
 }
 
 # Generated files are cleaned by dh_clean AND dh_prep
+# - Package can be set to "_source" to generate a file relevant
+#   for the source package (the meson build does this atm.).
+#   Files for "_source" are only cleaned by dh_clean.
 sub generated_file {
 	my ($package, $filename, $mkdirs) = @_;
 	my $dir = "debian/.debhelper/generated/${package}";
@@ -1285,22 +1295,7 @@ sub is_cross_compiling {
 	}
 }
 
-# Returns source package name
-sub sourcepackage {
-	open (my $fd, '<', 'debian/control') ||
-	    error("cannot read debian/control: $!\n");
-	while (<$fd>) {
-		chomp;
-		s/\s+$//;
-		if (/^Source:\s*(.*)/i) {
-			close($fd);
-			return $1;
-		}
-	}
 
-	close($fd);
-	error("could not find Source: line in control file.");
-}
 
 # Returns a list of packages in the control file.
 # Pass "arch" or "indep" to specify arch-dependent (that will be built
@@ -1311,7 +1306,13 @@ sub sourcepackage {
 # As a side effect, populates %package_arches and %package_types
 # with the types of all packages (not only those returned).
 my (%package_types, %package_arches, %package_multiarches, %packages_by_type,
-    %package_sections);
+    %package_sections, $sourcepackage, %rrr);
+# Returns source package name
+sub sourcepackage {
+	getpackages() if not defined($sourcepackage);
+	return $sourcepackage;
+}
+
 sub getpackages {
 	my ($type) = @_;
 	error("getpackages: First argument must be one of \"arch\", \"indep\", or \"both\"")
@@ -1339,6 +1340,28 @@ sub getpackages {
 	};
 
 	$packages_by_type{$_} = [] for qw(both indep arch all-listed-in-control-file);
+	while (<$fd>) {
+		chomp;
+		s/\s+$//;
+		next if m/^\s*+\#/;
+
+		if (/^Source:\s*(.*)/i) {
+			$sourcepackage = $1;
+			next;
+		} elsif (/^Rules-Requires-Root:\s*(.*)/i) {
+			for my $keyword (split(' ', $1)) {
+				$rrr{$keyword} = 1;
+			}
+			next;
+		} elsif (/^Section:\s(.*)$/i) {
+			$source_section = $1;
+			next;
+		}
+		next if not $_ and not defined($sourcepackage);
+		last if (!$_ or eof); # end of stanza.
+	}
+	error("could not find Source: line in control file.") if not defined($sourcepackage);
+	$rrr{'binary-targets'} = 1 if not %rrr;
 
 	while (<$fd>) {
 		chomp;
@@ -1397,8 +1420,6 @@ sub getpackages {
 						push(@{$packages_by_type{'both'}}, $package);
 					}
 				}
-			} elsif ($section and not defined($source_section)) {
-				$source_section = $section;
 			}
 			$package='';
 			$package_type=undef;
@@ -1409,6 +1430,39 @@ sub getpackages {
 	close($fd);
 
 	return @{$packages_by_type{$type}};
+}
+
+# Return true if we should use root.
+# - Takes an optional keyword; if passed, this will return true if the keyword is listed in R^3 (Rules-Requires-Root)
+# - If the optional keyword is omitted or not present in R^3 and R^3 is not 'binary-targets', then returns false
+# - Returns true otherwise (i.e. keyword is in R^3 or R^3 is 'binary-targets')
+sub should_use_root {
+	my ($keyword) = @_;
+	return 1 if not DH_ENABLE_RRR_SUPPORT;
+	getpackages() if not %rrr;
+
+	return 0 if exists($rrr{'no'});
+	return 1 if exists($rrr{'binary-targets'});
+	return 0 if not defined($keyword);
+	return 1 if exists($rrr{$keyword});
+	return 0;
+}
+
+# Returns the "gain root command" as a list suitable for passing as a part of the command to "doit()"
+sub gain_root_cmd {
+	my $raw_cmd = $ENV{DPKG_GAIN_ROOT_CMD};
+	return if not defined($raw_cmd) or $raw_cmd =~ m/^\s*+$/;
+	return split(' ', $raw_cmd);
+}
+
+sub root_requirements {
+	return 'legacy-root' if not DH_ENABLE_RRR_SUPPORT;
+
+	getpackages() if not %rrr;
+
+	return 'none' if exists($rrr{'no'});
+	return 'legacy-root' if exists($rrr{'binary-targets'});
+	return 'targeted-promotion';
 }
 
 # Returns the arch a package will build for.
@@ -1991,6 +2045,32 @@ sub on_pkgs_in_parallel(&) {
 	goto \&on_items_in_parallel;
 }
 
+# Given a list of files, find all hardlinked files and return:
+# 1: a list of unique files (all files in the list are not hardlinked with any other file in that list)
+# 2: a map where the keys are names of hardlinks and the value points to the name selected as the file put in the
+#    list of unique files.
+#
+# This is can be used to relink hard links after modifying one of them.
+sub find_hardlinks {
+	my (@all_files) = @_;
+	my (%seen, %hardlinks, @unique_files);
+	for my $file (@all_files) {
+		my ($dev, $inode, undef, $nlink)=stat($file);
+		if (defined $nlink && $nlink > 1) {
+			if (! $seen{"$inode.$dev"}) {
+				$seen{"$inode.$dev"}=$file;
+				push(@unique_files, $file);
+			} else {
+				# This is a hardlink.
+				$hardlinks{$file}=$seen{"$inode.$dev"};
+			}
+		} else {
+			push(@unique_files, $file);
+		}
+	}
+	return (\@unique_files, \%hardlinks);
+}
+
 sub on_items_in_parallel {
 	my ($pkgs_ref, $code) = @_;
 	my @pkgs = @{$pkgs_ref};
@@ -2069,6 +2149,11 @@ sub compute_doc_main_package {
 	}
 	# We do not know; make that clear to the caller
 	return;
+}
+
+sub dbgsym_tmpdir {
+	my ($package) = @_;
+	return "debian/.debhelper/${package}/dbgsym-root";
 }
 
 

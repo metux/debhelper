@@ -1,5 +1,7 @@
 #!/usr/bin/perl
 
+=encoding UTF-8
+
 =head1 NAME
 
 dh_builddeb - build Debian binary packages
@@ -24,6 +26,10 @@ and L<dh_gencontrol(1)> have prepared them.
 
 It supports building multiple binary packages in parallel, when enabled by
 DEB_BUILD_OPTIONS.
+
+When the I<Rules-Requires-Root> field is not (effectively)
+I<binary-targets>, B<dh_builddeb> will pass B<--root-owner-group> to
+L<dpkg-deb(1)>.
 
 =head1 OPTIONS
 
@@ -99,11 +105,13 @@ sub build_and_rename_deb {
 }
 
 my @items;
+my @dpkg_options;
+push(@dpkg_options, '--root-owner-group') if not should_use_root();
 
 for my $package (@{$dh{DOPACKAGES}}) {
 	push(@items, [$package, 0]);
 	if (not is_udeb($package)) {
-		my $dbgsym_tmpdir = "debian/.debhelper/${package}/dbgsym-root";
+		my $dbgsym_tmpdir = dbgsym_tmpdir($package);
 		my $dbgsym_control = "${dbgsym_tmpdir}/DEBIAN/control";
 		if ( -f $dbgsym_control) {
 			# Only build the dbgsym package if it has a control file.
@@ -122,8 +130,8 @@ on_items_in_parallel(\@items, sub {
 		my $tmp=tmpdir($package);
 
 		if ($dbgsym) {
-			my $dbgsym_tmpdir = "debian/.debhelper/${package}/dbgsym-root";
-			doit("dpkg-deb", @{$dh{U_PARAMS}},
+			my $dbgsym_tmpdir = dbgsym_tmpdir($package);
+			doit("dpkg-deb", @dpkg_options, @{$dh{U_PARAMS}},
 				"--build", $dbgsym_tmpdir, $dh{DESTDIR});
 			next;
 		}
@@ -139,11 +147,12 @@ on_items_in_parallel(\@items, sub {
 			}
 		}
 		if (! is_udeb($package)) {
-			doit("dpkg-deb", @{$dh{U_PARAMS}}, "--build", $tmp, $dh{DESTDIR}.$dh{FILENAME});
+			doit("dpkg-deb", @dpkg_options, @{$dh{U_PARAMS}}, "--build", $tmp, $dh{DESTDIR}.$dh{FILENAME});
 		}
 		else {
 			my $filename=$dh{FILENAME};
 			my @cmd = qw(dpkg-deb -z6 -Zxz -Sextreme);
+			push(@cmd, @dpkg_options);
 			push(@cmd, @{$dh{U_PARAMS}}) if $dh{U_PARAMS};
 			push(@cmd, '--build', $tmp);
 			if (! $filename) {

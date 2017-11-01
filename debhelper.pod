@@ -28,6 +28,11 @@ package, which contains a L<dh_make|dh_make(1)> command that partially
 automates the process. For a more gentle introduction, the B<maint-guide> Debian 
 package contains a tutorial about making your first package using debhelper.
 
+Except where tool explicitly denotes otherwise, all of the debhelper
+tools assumes that they run from root directory of an unpacked source
+package.  This is so they can locate find F<debian/control> and
+F<debian/compat> when needed.
+
 =head1 DEBHELPER COMMANDS
 
 Here is the list of debhelper commands you can use. See their man
@@ -746,6 +751,14 @@ helpers that rely on the bug to fail with a "command not found"-error.
 The B<--list-missing> and B<--fail-missing> in B<dh_install> has been
 removed.  Please use B<dh_missing> and its corresponding options,
 which can also see the files installed by other helpers.
+
+=item -
+
+The B<dh_installinit> helper no longer installs configuration for
+the upstart init system.  Instead, it will abort the build if it
+finds an old upstart configuration file.  The error is there to
+remind the package maintainer to ensure the proper removal of the
+conffiles shipped in previous versions of the package (if any).
 
 =back
 

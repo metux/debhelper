@@ -176,7 +176,7 @@ $no_auto_dbgsym = 1 if get_buildoption('noautodbgsym') or get_buildoption('nodde
 my (@shared_libs, @executables, @static_libs, @build_ids, %file_output);
 sub testfile {
 	my $fn = $_;
-	return if -l $fn or -d _; # Skip directories and symlinks always.
+	return if -l $fn; # Always skip symlinks.
 	
 	# See if we were asked to exclude this file.
 	# Note that we have to test on the full filename, including directory.
@@ -190,6 +190,12 @@ sub testfile {
 
 	# Is it a debug library in a debug subdir?
 	return if $fn=~m/debug\/.*\.so/;
+
+	# Exploit the previous stat call to get the $mode, so we can check
+	# later if it is executable or not.
+	#
+	# NB: compat() can issue a stat, so we /should/ do this now
+	my (undef, undef, $mode, undef) = stat(_);
 
 	if (compat(10)) {
 		# In compat 10 and earlier, we used filenames and file(1)
@@ -206,8 +212,7 @@ sub testfile {
 			}
 		}
 
-		# Is it executable? -x isn't good enough, so we need to use stat.
-		my (undef, undef, $mode, undef) = stat(_);
+		# -x is not good enough for this test
 		if ($mode & 0111) {
 			# Ok, expensive test.
 			my $type = get_file_type($fn, 1);
@@ -220,10 +225,8 @@ sub testfile {
 		# In compat 11, we check the ELF header manually (because bulking file(1) is a pain and
 		# it is too slow otherwise)
 
-		# Exploit the previous stat call, so we can check if it is executable or not (-x is not good enough
-		# for this test)
-		my (undef, undef, $mode, undef) = stat(_);
 		if (is_so_or_exec_elf_file($fn)) {
+			# -x is not good enough for this test
 			if ($mode & 0111) {
 				push(@executables, $fn);
 			} else {
@@ -329,7 +332,7 @@ sub process_packages {
 			# Avoid creating a dbgsym that would clash with a registered
 			# package or looks like a manual -dbg package.
 			if (not $all_packages{"${package}-dbgsym"} and $package !~ m/-dbg(?:sym)?$/) {
-				$debugtmp = "debian/.debhelper/${package}/dbgsym-root";
+				$debugtmp = dbgsym_tmpdir($package);
 				$keep_debug = 1;
 				$use_build_id = 2;
 			}

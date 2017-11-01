@@ -4,8 +4,7 @@ Priority: optional
 Maintainer: Debhelper Maintainers <debhelper-devel@lists.alioth.debian.org>
 Uploaders: Niels Thykier <niels@thykier.net>,
            Bernhard R. Link <brlink@debian.org>
-Build-Depends: dpkg (>= 1.19.0.3~),
-               dpkg-dev (>= 1.19.0.3~),
+Build-Depends: dpkg-dev (>= 1.18.0~),
                perl:any,
                po4a (>= 0.24)
 Standards-Version: 4.1.1
@@ -19,8 +18,8 @@ Depends: autotools-dev,
          binutils,
          dh-autoreconf (>= 12~),
          dh-strip-nondeterminism (>= 0.028~),
-         dpkg (>= 1.19.0.3~),
-         dpkg-dev (>= 1.19.0.3~),
+         dpkg (>= 1.16.2~),
+         dpkg-dev (>= 1.18.2~),
          file (>= 3.23),
          libdpkg-perl (>= 1.17.14),
          man-db (>= 2.5.1-1),

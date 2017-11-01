@@ -5,6 +5,8 @@ debhelper (10.10.5~bpo9+1) UNRELEASED; urgency=medium
     for that.
   * d/control: Remove the R³ field; debhelper in backports cannot
     be built without (fake)root.
+  * d/control: Reset versioned (Build-)Depends on dpkg and dpkg-dev
+    due to the above.
 
  -- Niels Thykier <niels@thykier.net>  Wed, 01 Nov 2017 07:04:41 +0000
 

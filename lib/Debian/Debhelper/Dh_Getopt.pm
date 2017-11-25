@@ -257,7 +257,8 @@ sub parseopts {
 		my $do_exit = 0;
 		if ($profile_excluded_pkg) {
 			if (! $dh{BLOCK_NOOP_WARNINGS}) {
-				warning("All requested packages have been excluded (e.g. via a Build-Profile).");
+				warning('All requested packages have been excluded'
+					. ' (e.g. via a Build-Profile or due to architecture restrictions).');
 			}
 			$do_exit = 1;
 		}
@@ -299,7 +300,7 @@ sub parseopts {
 			for my $pkg (getpackages()) {
 				$archs{package_declared_arch($pkg)} = 1;
 			}
-			warning("No packages to build. Architecture mismatch: " . buildarch() . ", want: " . join(" ", sort keys %archs));
+			warning("No packages to build. Architecture mismatch: " . hostarch() . ", want: " . join(" ", sort keys %archs));
 		}
 		exit(0);
 	}

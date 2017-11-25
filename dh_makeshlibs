@@ -138,14 +138,14 @@ init(options => {
 	"add-udeb=s" => \$dh{SHLIBS_UDEB},
 });
 
-my $objdump=cross_command("objdump");
-
 my $ok=1;
 
 foreach my $package (@{$dh{DOPACKAGES}}) {
 	next if is_udeb($package);
 	
 	my $tmp=tmpdir($package);
+
+	my $objdump = cross_command($package, "objdump");
 
 	my (%seen, $unversioned_so);
 	my $need_ldconfig = 0;
@@ -168,6 +168,7 @@ foreach my $package (@{$dh{DOPACKAGES}}) {
 	while (<FIND>) {
 		my ($library, $major);
 		chomp;
+		next if not is_so_or_exec_elf_file($_);
 		push @lib_files, $_;
 		my $ret = compat(10) ? `$objdump -p "$_"` : qx_cmd($objdump, '-p', $_);
 		if ($ret=~m/\s+SONAME\s+(.*)\.so\.(.*)/) {

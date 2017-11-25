@@ -8,7 +8,6 @@ dh_missing - check for missing files
 
 use strict;
 use warnings;
-use File::Find;
 use Debian::Debhelper::Dh_Lib;
 
 our $VERSION = DH_BUILTIN_VERSION;
@@ -42,8 +41,8 @@ built.
 List the files that are deliberately not installed in I<any> binary
 package.  Paths listed in this file are ignored by B<dh_missing>.
 However, it is B<not> a method to exclude files from being installed
-by B<dh_install>. Please use the B<--exclude> B<dh_install> option for
-that.
+by any of the debhelper tool.  If you want a tool to not install a
+given file, please use its B<--exclude> option (where available).
 
 Please keep in mind that B<dh_missing> will B<not> expand wildcards in
 this file.
@@ -96,8 +95,11 @@ if (! -d $srcdir) {
 		warning("Assuming everything is installed directly into the package directory.");
 		exit(0);
 	}
+	# If there was no explicit source directory, then we do not care
+	# if it is missing.
+	exit(0) if not defined $dh{SOURCEDIR};
 	if (compat(10)) {
-		# Prevent "dh $@ --list-missing --destdir=..." from failing in compat 10.
+		# Prevent "dh $@ --list-missing --destdir=... ..." from failing in compat 10.
 		warning("Cannot check if installation is missing files: $srcdir does not exist");
 		exit(0);
 	} else {
@@ -142,7 +144,14 @@ my $installed=join("|", map {
 	"\Q$_\E\/.*|\Q$_\E";
 } @installed);
 $installed=qr{^($installed)$};
-find(sub {
+
+# Lazy load File::Find
+require File::Find;
+
+File::Find::find(sub {
+	# Lazy loading of File::Find makes perl think that File::Find::dir is only used once
+	# and we might have typo'ed something
+	no warnings qw(once);
 	-f || -l || return;
 	$_="$File::Find::dir/$_";
 	if (! /$installed/ && ! excludefile($_)) {

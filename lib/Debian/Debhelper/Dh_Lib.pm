@@ -23,20 +23,19 @@ use constant {
 	'XARGS_INSERT_PARAMS_HERE' => \'<INSERT-HERE>', #'# Hi emacs.
 	# Magic value for debhelper tools to request "current version"
 	'DH_BUILTIN_VERSION' => \'<DH_LIB_VERSION>', #'# Hi emacs.
+	# Default Package-Type / extension (must be aligned with dpkg)
+	'DEFAULT_PACKAGE_TYPE' => 'deb',
 
 	# Kill-switch for R³ (for backports)
 	'DH_ENABLE_RRR_SUPPORT' => 0,
 };
 
-my %NAMED_COMPAT_LEVELS = (
-	# The bleeding-edge compat level is deliberately not documented.
-	# You are welcome to use it, but please subscribe to the git
-	# commit mails if you do.  There is no heads up on changes for
-	# bleeding-edge testers as it is mainly intended for debhelper
-	# developers.
-	'bleeding-edge-tester' => MAX_COMPAT_LEVEL,
-	'beta-tester'          => BETA_TESTER_COMPAT,
-);
+use constant {
+	# Package-Type / extension for dbgsym packages
+	# TODO: Find a way to determine this automatically from the vendor
+	#  - blocked by Dpkg::Vendor having a rather high load time (for debhelper)
+	'DBGSYM_PACKAGE_TYPE' => DEFAULT_PACKAGE_TYPE,
+};
 
 use Errno qw(ENOENT);
 use Exporter qw(import);
@@ -67,9 +66,10 @@ our (@EXPORT, %dh);
 	    &glob_expand_error_handler_warn_and_discard &glob_expand
 	    &glob_expand_error_handler_silently_ignore DH_BUILTIN_VERSION
 	    &print_and_complex_doit &default_sourcedir &qx_cmd
-	    &compute_doc_main_package &is_so_or_exec_elf_file
+	    &compute_doc_main_package &is_so_or_exec_elf_file &hostarch
 	    &assert_opt_is_known_package &dbgsym_tmpdir &find_hardlinks
-	    &should_use_root &gain_root_cmd
+	    &should_use_root &gain_root_cmd DEFAULT_PACKAGE_TYPE
+	    DBGSYM_PACKAGE_TYPE
 );
 
 # The Makefile changes this if debhelper is installed in a PREFIX.
@@ -113,7 +113,7 @@ sub init {
 	if ((defined $ENV{DH_OPTIONS} && length $ENV{DH_OPTIONS}) ||
  	    (defined $ENV{DH_INTERNAL_OPTIONS} && length $ENV{DH_INTERNAL_OPTIONS}) ||
 	    grep /^-/, @ARGV) {
-		eval "use Debian::Debhelper::Dh_Getopt";
+		eval { require Debian::Debhelper::Dh_Getopt; };
 		error($@) if $@;
 		Debian::Debhelper::Dh_Getopt::parseopts(%params);
 	}
@@ -179,6 +179,8 @@ sub init {
 	if (! exists $dh{ERROR_HANDLER} || ! defined $dh{ERROR_HANDLER}) {
 		$dh{ERROR_HANDLER}='exit \$?';
 	}
+
+	$dh{U_PARAMS} //= [];
 }
 
 # Run at exit. Add the command to the log files for the packages it acted
@@ -666,9 +668,7 @@ sub dirname {
 					$c=$l;
 					$c =~ s/^\s*+//;
 					$c =~ s/\s*+$//;
-					if (exists($NAMED_COMPAT_LEVELS{$c})) {
-						$c = $NAMED_COMPAT_LEVELS{$c};
-					} elsif ($c !~ m/^\d+$/) {
+					if ($c !~ m/^\d+$/) {
 						error("debian/compat must contain a positive number (found: \"$c\")");
 					}
 				}
@@ -725,14 +725,14 @@ sub default_sourcedir {
 # for the package, and it will return the actual existing filename to use.
 #
 # It tries several filenames:
-#   * debian/package.filename.buildarch
-#   * debian/package.filename.buildos
+#   * debian/package.filename.hostarch
+#   * debian/package.filename.hostos
 #   * debian/package.filename
 #   * debian/filename (if the package is the main package)
 # If --name was specified then the files
 # must have the name after the package name:
-#   * debian/package.name.filename.buildarch
-#   * debian/package.name.filename.buildos
+#   * debian/package.name.filename.hostarch
+#   * debian/package.name.filename.hostos
 #   * debian/package.name.filename
 #   * debian/name.filename (if the package is the main package)
 
@@ -778,18 +778,18 @@ sub default_sourcedir {
 				push(@try, "debian/${pkg}.${filename}");
 				if ($check_expensive) {
 					push(@try,
-						 "debian/${pkg}.${filename}.".buildarch(),
-						 "debian/${pkg}.${filename}.".buildos(),
+						 "debian/${pkg}.${filename}.".hostarch(),
+						 "debian/${pkg}.${filename}.".dpkg_architecture_value("DEB_HOST_ARCH_OS"),
 					);
 				}
 			}
 		} else {
-			# Avoid checking for buildarch+buildos unless we have reason
+			# Avoid checking for hostarch+hostos unless we have reason
 			# to believe that they exist.
 			if ($check_expensive) {
 				push(@try,
-					 "debian/${package}.${filename}.".buildarch(),
-					 "debian/${package}.${filename}.".buildos(),
+					 "debian/${package}.${filename}.".hostarch(),
+					 "debian/${package}.${filename}.".dpkg_architecture_value("DEB_HOST_ARCH_OS"),
 					);
 			}
 			push(@try, "debian/$package.$filename");
@@ -844,15 +844,25 @@ sub pkgfilename {
 		my $package=shift;
 
 		return $isnative_cache{$package} if defined $isnative_cache{$package};
-		
+
+		if (not %isnative_cache) {
+			require Dpkg::Changelog::Parse;
+		}
+
 		# Make sure we look at the correct changelog.
 		my $isnative_changelog=pkgfile($package,"changelog");
 		if (! $isnative_changelog) {
 			$isnative_changelog="debian/changelog";
 		}
+		my $res = Dpkg::Changelog::Parse::changelog_parse(
+			file => $isnative_changelog,
+			compression => 0,
+		);
+		if (not defined($res)) {
+			error("No changelog entries for $package!? (changelog file: ${isnative_changelog})");
+		}
 		# Get the package version.
-		my $version=`dpkg-parsechangelog -l$isnative_changelog -SVersion`;
-		chomp($dh{VERSION} = $version);
+		$dh{VERSION} = $res->{'Version'};
 		# Did the changelog parse fail?
 		if ($dh{VERSION} eq q{}) {
 			error("changelog parse failure");
@@ -1252,14 +1262,15 @@ sub excludefile {
 	}
 }
 
-# Returns the build architecture.
+# Confusing name for hostarch
 sub buildarch {
-	dpkg_architecture_value('DEB_HOST_ARCH');
+	deprecated_functionality('buildarch() is deprecated and replaced by hostarch()', 12);
+	goto \&hostarch;
 }
 
-# Returns the build OS.
-sub buildos {
-	dpkg_architecture_value("DEB_HOST_ARCH_OS");
+# Returns the architecture that will run binaries produced (DEB_HOST_ARCH)
+sub hostarch {
+	dpkg_architecture_value('DEB_HOST_ARCH');
 }
 
 # Returns a truth value if this seems to be a cross-compile
@@ -1306,7 +1317,8 @@ sub is_cross_compiling {
 # As a side effect, populates %package_arches and %package_types
 # with the types of all packages (not only those returned).
 my (%package_types, %package_arches, %package_multiarches, %packages_by_type,
-    %package_sections, $sourcepackage, %rrr);
+    %package_sections, $sourcepackage, %rrr, %package_cross_type);
+
 # Returns source package name
 sub sourcepackage {
 	getpackages() if not defined($sourcepackage);
@@ -1329,7 +1341,7 @@ sub getpackages {
 	my $arch="";
 	my $section="";
 	my ($package_type, $multiarch, %seen, @profiles, $source_section,
-		$included_in_build_profile);
+		$included_in_build_profile, $cross_type, $cross_target_arch);
 	if (exists $ENV{'DEB_BUILD_PROFILES'}) {
 		@profiles=split /\s+/, $ENV{'DEB_BUILD_PROFILES'};
 	}
@@ -1384,7 +1396,11 @@ sub getpackages {
 			$package_type=$1;
 		} elsif (/^Multi-Arch:\s*(.*)/i) {
 			$multiarch = $1;
-
+		} elsif (/^X-DH-Build-For-Type:\s*(.*)/i) {
+			$cross_type = $1;
+			if ($cross_type ne 'host' and $cross_type ne 'target') {
+				error("Unknown value of X-DH-Build-For-Type \"$cross_type\" at debian/control:$.");
+			}
 		} elsif (/^Build-Profiles:\s*(.*)/i) {
 			# rely on libdpkg-perl providing the parsing functions
 			# because if we work on a package with a Build-Profiles
@@ -1409,20 +1425,34 @@ sub getpackages {
 				$package_arches{$package}=$arch;
 				$package_multiarches{$package} = $multiarch;
 				$package_sections{$package} = $section || $source_section;
+				$cross_type //= 'host';
+				$package_cross_type{$package} = $cross_type;
 				push(@{$packages_by_type{'all-listed-in-control-file'}}, $package);
 				if ($included_in_build_profile) {
 					if ($arch eq 'all') {
 						push(@{$packages_by_type{'indep'}}, $package);
 						push(@{$packages_by_type{'both'}}, $package);
-					} elsif ($arch eq 'any' ||
-							 ($arch ne 'all' && samearch(buildarch(), $arch))) {
-						push(@{$packages_by_type{'arch'}}, $package);
-						push(@{$packages_by_type{'both'}}, $package);
+					} else {
+						my $included = 0;
+						$included = 1 if $arch eq 'any';
+						if (not $included) {
+							my $desired_arch = hostarch();
+							if ($cross_type eq 'target') {
+								$cross_target_arch //= dpkg_architecture_value('DEB_TARGET_ARCH');
+								$desired_arch = $cross_target_arch;
+							}
+							$included = 1 if samearch($desired_arch, $arch);
+						}
+						if ($included) {
+							push(@{$packages_by_type{'arch'}}, $package);
+							push(@{$packages_by_type{'both'}}, $package);
+						}
 					}
 				}
 			}
 			$package='';
 			$package_type=undef;
+			$cross_type = undef;
 			$arch='';
 			$section='';
 		}
@@ -1481,9 +1511,11 @@ sub package_binary_arch {
 
 	if (! exists $package_arches{$package}) {
 		warning "package $package is not in control info";
-		return buildarch();
+		return hostarch();
 	}
-	return $package_arches{$package} eq 'all' ? "all" : buildarch();
+	return 'all' if $package_arches{$package} eq 'all';
+	return dpkg_architecture_value('DEB_TARGET_ARCH') if package_cross_type($package) eq 'target';
+	return hostarch();
 }
 
 # Returns the Architecture: value which the package declared.
@@ -1492,7 +1524,7 @@ sub package_declared_arch {
 
 	if (! exists $package_arches{$package}) {
 		warning "package $package is not in control info";
-		return buildarch();
+		return hostarch();
 	}
 	return $package_arches{$package};
 }
@@ -1503,7 +1535,7 @@ sub package_is_arch_all {
 
 	if (! exists $package_arches{$package}) {
 		warning "package $package is not in control info";
-		return buildarch();
+		return hostarch();
 	}
 	return $package_arches{$package} eq 'all';
 }
@@ -1533,6 +1565,18 @@ sub package_section {
 		return 'unknown';
 	}
 	return $package_sections{$package} // 'unknown';
+}
+
+sub package_cross_type {
+	my ($package) = @_;
+
+	# Test the architecture field instead, as it is common for a
+	# package to not have a multi-arch value.
+	if (! exists $package_cross_type{$package}) {
+		warning "package $package is not in control info";
+		return 'host';
+	}
+	return $package_cross_type{$package} // 'host';
 }
 
 # Return true if a given package is really a udeb.
@@ -1747,7 +1791,12 @@ sub clean_jobserver_makeflags {
 
 # If cross-compiling, returns appropriate cross version of command.
 sub cross_command {
-	my $command=shift;
+	my ($package, $command) = @_;
+	if (package_cross_type($package) eq 'target') {
+		if (dpkg_architecture_value("DEB_HOST_GNU_TYPE") ne dpkg_architecture_value("DEB_TARGET_GNU_TYPE")) {
+			return dpkg_architecture_value("DEB_TARGET_GNU_TYPE") . "-$command";
+		}
+	}
 	if (is_cross_compiling()) {
 		return dpkg_architecture_value("DEB_HOST_GNU_TYPE")."-$command";
 	}
@@ -1761,12 +1810,12 @@ sub cross_command {
 # variable and returns the computed value.
 sub get_source_date_epoch {
 	return $ENV{SOURCE_DATE_EPOCH} if exists($ENV{SOURCE_DATE_EPOCH});
-	eval "use Dpkg::Changelog::Debian";
+	eval { require Dpkg::Changelog::Debian };
 	if ($@) {
 		warning "unable to set SOURCE_DATE_EPOCH: $@";
 		return;
 	}
-	eval "use Time::Piece";
+	eval { require Time::Piece };
 	if ($@) {
 		warning "unable to set SOURCE_DATE_EPOCH: $@";
 		return;
@@ -1798,7 +1847,7 @@ sub set_buildflags {
 	# rely on this [CVE-2016-1238]
 	$ENV{PERL_USE_UNSAFE_INC} = 1 if compat(10);
 
-	eval "use Dpkg::BuildFlags";
+	eval { require Dpkg::BuildFlags };
 	if ($@) {
 		warning "unable to load build flags: $@";
 		return;

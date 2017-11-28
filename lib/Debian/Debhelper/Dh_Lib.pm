@@ -2275,6 +2275,12 @@ sub dbgsym_tmpdir {
 			 'dh_docrootdir' => '${datarootdir}/doc', # Not from autotols (made up to support debhelper)
 			 #	'docdir'        => '${dh_docroot}/${package}' # debhelper assumes docdir is a direct subdir of dh_docdir
 		);
+		if (is_build_profile_active('pkg.flatpak.app')) {
+			# Flatpak mode; prefix is /app, merge bin and sbin dirs, etc.
+			$INSTALLATION_DIRECTORIES{'prefix'} = '/app';
+			$INSTALLATION_DIRECTORIES{'sysconfdir'} = '${prefix}/etc';
+			$INSTALLATION_DIRECTORIES{'sbindir'} = $INSTALLATION_DIRECTORIES{'bindir'};
+		}
 	}
 
 	sub get_installation_directory {

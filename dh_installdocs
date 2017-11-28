@@ -184,6 +184,9 @@ directory, it will install the complete contents of the directory.
 =cut
 
 my %docdir_created;
+my $datadir = get_rel_installation_directory('datadir');
+my $docroot = get_rel_installation_directory('dh_docrootdir');
+
 # Create documentation directories on demand. This allows us to use dangling
 # symlinks for linked documentation directories unless additional files need
 # to be installed.
@@ -194,10 +197,10 @@ sub ensure_docdir {
 
 	my $target;
 	if ($dh{LINK_DOC} && $dh{LINK_DOC} ne $package) {
-		$target="$tmp/usr/share/doc/$dh{LINK_DOC}";
+		$target="${tmp}/${docroot}/$dh{LINK_DOC}";
 	}
 	else {
-		$target="$tmp/usr/share/doc/$package";
+		$target="${tmp}/${docroot}/${package}";
 	}
 
 	# If this is a symlink, leave it alone.
@@ -251,14 +254,14 @@ foreach my $package (getpackages()) {
 				}
 			}
 			# Make sure that the parent directory exists.
-			if (!-d "$tmp/usr/share/doc" && !-l "$tmp/usr/share/doc") {
-				install_dir("$tmp/usr/share/doc");
+			if (!-d "${tmp}/${docroot}" && !-l "${tmp}/${docroot}") {
+				install_dir("${tmp}/${docroot}");
 			}
 			# Create symlink to another documentation directory if
 			# necessary.
-			if (!-d "$tmp/usr/share/doc/$package" &&
-				!-l "$tmp/usr/share/doc/$package") {
-				make_symlink_raw_target($dh{LINK_DOC}, "$tmp/usr/share/doc/$package");
+			if (!-d "${tmp}/${docroot}/${package}" &&
+				!-l "${tmp}/${docroot}/${package}") {
+				make_symlink_raw_target($dh{LINK_DOC}, "${tmp}/${docroot}/${package}");
 				# Policy says that if you make your documentation
 				# directory a symlink, then you have to depend on
 				# the target.
@@ -293,7 +296,7 @@ foreach my $package (getpackages()) {
 		if ($dh{EXCLUDE_FIND}) {
 			$exclude .= ' -and ! \( '.$dh{EXCLUDE_FIND}.' \)';
 		}
-		my $target_dir = "${tmp}/usr/share/doc/${target_package}";
+		my $target_dir = "${tmp}/${docroot}/${target_package}";
 		install_dir($target_dir) unless -l $target_dir;
 
 		foreach my $doc (@docs) {
@@ -315,8 +318,8 @@ foreach my $package (getpackages()) {
 				doit("cp", '--reflink=auto', "-a", $doc, $target_dir);
 			}
 		}
-		doit("chown","-R","0:0","$tmp/usr/share/doc") if should_use_root();
-		doit("chmod","-R","u+rw,go=rX","$tmp/usr/share/doc");
+		doit("chown","-R","0:0","${tmp}/${docroot}") if should_use_root();
+		doit("chmod","-R","u+rw,go=rX","${tmp}/${docroot}");
 	}
 
 	# .Debian is correct, according to policy, but I'm easy.
@@ -327,25 +330,25 @@ foreach my $package (getpackages()) {
 	if (! $link_doc && $readme_debian && ! excludefile($readme_debian)) {
 		ensure_docdir($package);
 		install_file($readme_debian,
-					 "$tmp/usr/share/doc/$package/README.Debian");
+					 "${tmp}/${docroot}/${package}/README.Debian");
 	}
 
 	my $todo=pkgfile($package,'TODO');
 	if (! $link_doc && $todo && ! excludefile($todo)) {
 		ensure_docdir($package);
 		if (isnative($package)) {
-			install_file($todo, "$tmp/usr/share/doc/$package/TODO");
+			install_file($todo, "${tmp}/${docroot}/${package}/TODO");
 		}
 		else {
 			install_file($todo,
-				"$tmp/usr/share/doc/$package/TODO.Debian");
+				"${tmp}/${docroot}/${package}/TODO.Debian");
 		}
 	}
 
 	# If the "directory" is a dangling symlink, then don't install
 	# the copyright file. This is useful for multibinary packages 
 	# that share a doc directory.
-	if (! $link_doc && (! -l "$tmp/usr/share/doc/$package" || -d "$tmp/usr/share/doc/$package")) {
+	if (! $link_doc && (! -l "${tmp}/${docroot}/${package}" || -d "${tmp}/${docroot}/${package}")) {
 		# Support debian/package.copyright, but if not present, fall
 		# back on debian/copyright for all packages, not just the 
 		# main binary package.
@@ -356,7 +359,7 @@ foreach my $package (getpackages()) {
 		if ($copyright && ! excludefile($copyright)) {
 			ensure_docdir($package);
 			install_file($copyright,
-				"$tmp/usr/share/doc/$package/copyright");
+				"${tmp}/${docroot}/${package}/copyright");
 		}
 	}
 
@@ -395,7 +398,7 @@ foreach my $package (getpackages()) {
 	closedir(DEB);
 	
 	if (%doc_ids) {
-		install_dir("$tmp/usr/share/doc-base/");
+		install_dir("${tmp}/${datadir}/doc-base/");
 	}
 	# check for duplicate document ids
 	my %used_doc_ids;
@@ -404,10 +407,10 @@ foreach my $package (getpackages()) {
 	}
 	foreach my $fn (keys %doc_ids) {
 		# if this document ID is duplicated, we will install
-		# to usr/share/doc-base/packagename instead of
-		# usr/share/doc-base/doc_id. To allow for multiple
+		# to ${datadir}/doc-base/packagename instead of
+		# ${datadir}/doc-base/doc_id. To allow for multiple
 		# conflicting doc-bases in a single package, we will
-		# install to usr/share/doc-base/packagename-extrabits
+		# install to ${datadir}/doc-base/packagename-extrabits
 		# if the doc-base file is
 		# packagename.doc-base.extrabits
 		if ($used_doc_ids{$doc_ids{$fn}} > 1) {
@@ -415,11 +418,11 @@ foreach my $package (getpackages()) {
 			$fn_no_docbase =~ s/\.doc-base(?:\.(.*))?/
 			    if (defined $1 and length $1) {"-$1"} else {''}/xe;
 			install_file("debian/$fn",
-						 "$tmp/usr/share/doc-base/$fn_no_docbase");
+						 "${tmp}/${datadir}/doc-base/${fn_no_docbase}");
 		}
 		else {
 			install_file("debian/$fn",
-						 "$tmp/usr/share/doc-base/$doc_ids{$fn}");
+						 "${tmp}/${datadir}/doc-base/$doc_ids{$fn}");
 		}
 	}
 }

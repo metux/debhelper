@@ -84,6 +84,9 @@ Install this file as the upstream changelog.
 
 =cut
 
+
+my $docroot = get_rel_installation_directory('dh_docrootdir');
+
 # For binNMUs the first changelog entry is written into an extra file to
 # keep the packages coinstallable.
 sub install_binNMU_changelog {
@@ -96,7 +99,7 @@ sub install_binNMU_changelog {
 
 		my @stat=stat $input_fn or error("could not stat $input_fn: $!");
 		my $tmp=tmpdir($package);
-		my $output_fn="$tmp/usr/share/doc/$package/$changelog_name";
+		my $output_fn="${tmp}/${docroot}/${package}/${changelog_name}";
 		open my $output, ">", $output_fn
 			or error("could not open $output_fn for writing: $!");
 		my $arch=package_binary_arch($package);
@@ -191,8 +194,8 @@ on_pkgs_in_parallel {
 		# If it is a symlink to a documentation directory from the same
 		# source package, then don't do anything. Think multi-binary
 		# packages that depend on each other and want to link doc dirs.
-		if (-l "$tmp/usr/share/doc/$package") {
-			my $linkval=readlink("$tmp/usr/share/doc/$package");
+		if (-l "${tmp}/${docroot}/${package}") {
+			my $linkval=readlink("${tmp}/${docroot}/${package}");
 			my %allpackages=map { $_ => 1 } getpackages();
 			if ($allpackages{basename($linkval)}) {
 				next;
@@ -200,25 +203,25 @@ on_pkgs_in_parallel {
 			# Even if the target doesn't seem to be a doc dir from the
 			# same source package, don't do anything if it's a dangling
 			# symlink.
-			next unless -d "$tmp/usr/share/doc/$package";
+			next unless -d "${tmp}/${docroot}/${package}";
 		}
 
-		install_dir("$tmp/usr/share/doc/$package");
+		install_dir("${tmp}/${docroot}/${package}");
 
 		if (! $dh{NO_ACT}) {
 			if (! install_binNMU_changelog($package, $changelog, $changelog_name)) {
 				install_file($changelog,
-							 "$tmp/usr/share/doc/$package/$changelog_name");
+							 "${tmp}/${docroot}/${package}/${changelog_name}");
 			}
 		}
 
 		if (-e $news) {
-			install_file($news, "$tmp/usr/share/doc/$package/$news_name");
+			install_file($news, "${tmp}/${docroot}/${package}/${news_name}");
 		}
 
 		if (defined $upstream) {
 			my $link_to;
-			my $base="$tmp/usr/share/doc/$package";
+			my $base="$tmp/${docroot}/$package";
 			if (defined $upstream_text) {
 				install_file($upstream_text, "$base/changelog");
 				$link_to='changelog';
@@ -234,7 +237,7 @@ on_pkgs_in_parallel {
 			if ($dh{K_FLAG}) {
 				# Install symlink to original name of the upstream changelog file.
 				# Use basename in case original file was in a subdirectory or something.
-				doit("ln","-sf",$link_to,"$tmp/usr/share/doc/$package/".basename($upstream));
+				doit("ln","-sf",$link_to,"${tmp}/${docroot}/${package}/".basename($upstream));
 			}
 		}
 	}

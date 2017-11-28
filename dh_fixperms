@@ -58,10 +58,17 @@ sub patterns2find_expr {
 }
 
 
+my $docroot = get_rel_installation_directory('dh_docrootdir');
+my $syconfigdir = get_rel_installation_directory('sysconfdir');
+my $includedir = get_rel_installation_directory('includedir');
+my $datadir = get_rel_installation_directory('datadir');
+my $mandir = get_rel_installation_directory('mandir');
+my $bindir = get_rel_installation_directory('bindir');
+my $sbindir = get_rel_installation_directory('sbindir');
 my $vendorlib = substr $Config{vendorlib}, 1;
 my $vendorarch = substr $Config{vendorarch}, 1;
 my @executable_files_dirs = (
-	qw{usr/bin bin usr/sbin sbin usr/games etc/init.d},
+	$bindir, $sbindir, "${syconfigdir}/init.d", qw{bin sbin usr/games},
 );
 my @mode_0644_patterns = (
 	# Libraries and related files
@@ -111,15 +118,15 @@ on_pkgs_in_parallel {
 	
 		# Fix up permissions in usr/share/doc, setting everything to not
 		# executable by default, but leave examples directories alone.
-		find_and_reset_perm("${tmp}/usr/share/doc", '0644', '-type f', "! -regex '$tmp/usr/share/doc/[^/]*/examples/.*'");
-		find_and_reset_perm("${tmp}/usr/share/doc", '0755', '-type d');
+		find_and_reset_perm("${tmp}/${docroot}", '0644', '-type f', "! -regex '${tmp}/${docroot}/[^/]*/examples/.*'");
+		find_and_reset_perm("${tmp}/${docroot}", '0755', '-type d');
 
 		# Manpages, include file, desktop files, etc., shouldn't be executable
 		find_and_reset_perm([
-					"${tmp}/usr/share/man",
-					"${tmp}/usr/include",
-					"${tmp}/usr/share/applications",
-					"${tmp}/usr/share/lintian/overrides",
+					"${tmp}/${mandir}",
+					"${tmp}/${includedir}",
+					"${tmp}/${datadir}/applications",
+					"${tmp}/${datadir}/lintian/overrides",
 				], '0644', '-type f');
 
 		# nor should perl modules.
@@ -143,19 +150,19 @@ on_pkgs_in_parallel {
 			reset_perm_and_owner(0755, @exec_files)
 		}
 
-		if ( -d "$tmp/usr/share/bug/$package") {
-			complex_doit("find $tmp/usr/share/bug/$package -type f",
+		if ( -d "${tmp}/${datadir}/bug/${package}") {
+			complex_doit("find ${tmp}/${datadir}/bug/${package} -type f",
 						 "! -name 'script' ${find_exclude_options} -print0",
 						 "2>/dev/null | xargs -0r chmod 644");
-			if ( -f "$tmp/usr/share/bug/$package/script" ) {
-				reset_perm_and_owner(0755, "$tmp/usr/share/bug/$package/script");
+			if ( -f "${tmp}/${datadir}/bug/${package}/script" ) {
+				reset_perm_and_owner(0755, "${tmp}/${datadir}/bug/${package}/script");
 			}
-		} elsif ( -f "$tmp/usr/share/bug/$package" ) {
-			reset_perm_and_owner(0755, "$tmp/usr/share/bug/$package");
+		} elsif ( -f "${tmp}/${datadir}/bug/${package}" ) {
+			reset_perm_and_owner(0755, "${tmp}/${datadir}/bug/${package}");
 		}
 
 		# Files in $tmp/etc/sudoers.d/ must be mode 0440.
-		find_and_reset_perm("${tmp}/etc/sudoers.d", '0440', "-type f ! -perm 440");
+		find_and_reset_perm("${tmp}/${syconfigdir}/sudoers.d", '0440', "-type f ! -perm 440");
 	}
 };
 

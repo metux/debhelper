@@ -1,3 +1,16 @@
+debhelper (11~bpo9+1) stretch-backports; urgency=medium
+
+  * Rebuild for stretch-backports.
+  * Retained changes required for backports.
+    * Dh_Lib: Disable R³ support as we need dpkg{,-dev} (>= 1.19.0.4)
+      for that.
+    * d/control: Remove the R³ field; debhelper in backports cannot
+      be built without (fake)root.
+    * d/control: Reset versioned (Build-)Depends on dpkg and dpkg-dev
+      due to the above.
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 24 Dec 2017 07:55:49 +0000
+
 debhelper (11) unstable; urgency=medium
 
   [ Niels Thykier ]

@@ -1,3 +1,27 @@
+debhelper (11) unstable; urgency=medium
+
+  [ Niels Thykier ]
+  * dh_installdeb: Do basic validation of rm_conffile and mv_conffile
+    parameters in "maintscript" parameters in compat 10 and newer.
+    In compat 12, this is an error.  Thanks to Andreas Beckmann for
+    the suggestions.  (Closes: #882626)
+  * dh_strip: Fix bug where the Build-Id field would not be properly
+    filled when using --dbg-package.  Thanks to Paul Wise for finding
+    and reporting the bug.  (Closes: #884152)
+  * d/control: Bump Standards-Version to 4.1.2 - no changes required.
+  * dh_installsystemd: Remove neutering of dh_installsystemd in compat
+    levels prior to 11 now that compat 11 is stable.
+
+  [ Chris Leick ]
+  * debhelper.pod: Improve the wording of two parapraphs.
+
+  [ Translations ]
+  * Update Portuguese translation (Américo Monteiro)
+    (Closes: #883635)
+  * Update German translation (Chris Leick)  (Closes: #884205)
+
+ -- Niels Thykier <niels@thykier.net>  Sat, 16 Dec 2017 15:41:17 +0000
+
 debhelper (10.10.9~bpo9+1) stretch-backports; urgency=medium
 
   * Rebuild for stretch-backports.

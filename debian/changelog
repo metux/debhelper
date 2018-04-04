@@ -1,3 +1,12 @@
+debhelper (11.1.6~bpo9+1) stretch-backports; urgency=medium
+
+  * Rebuild for stretch-backports.
+  * Retained changes required for backports:
+    * Lower the required dpkg version (cherry-picked from the upcoming
+      debhelper version).
+
+ -- Mattia Rizzolo <mattia@debian.org>  Wed, 04 Apr 2018 19:58:57 +0200
+
 debhelper (11.1.6) unstable; urgency=medium
 
   * Dh_Lib: Avoid passing invalid parameters to a function, which

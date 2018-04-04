@@ -9,11 +9,7 @@ use lib dirname(__FILE__);
 use Test::DH;
 use Debian::Debhelper::Dh_Lib qw(!dirname);
 
-if (uid_0_test_is_ok()) {
-	plan(tests => 2);
-} else {
-	plan skip_all => 'fakeroot required';
-}
+plan(tests => 2);
 
 each_compat_up_to_and_incl_subtest(10, sub {
 	my @scripts = qw{postinst preinst prerm postrm};
@@ -29,7 +25,7 @@ mv_conffile /etc/2 /etc/3 1.0-1
 EOF
 	close($fd) or die("close($file): $!\n");
 
-	run_dh_tool( { 'needs_root' => 1 }, 'dh_installdeb');
+	run_dh_tool('dh_installdeb');
 
 	for my $script (@scripts) {
 		my @output=`cat debian/debhelper.$script.debhelper`;
@@ -50,7 +46,7 @@ ${contents}
 EOF
 	close($fd) or die("close($file): $!\n");
 
-	my $res = run_dh_tool( { 'needs_root' => 1, 'quiet' => 1 }, 'dh_installdeb');
+	my $res = run_dh_tool( { 'quiet' => 1 }, 'dh_installdeb');
 
 	remove_tree('debian/debhelper', 'debian/tmp', 'debian/.debhelper');
 	rm_files(@scripts);

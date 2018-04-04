@@ -26,6 +26,8 @@ $ENV{PATH} = "$ROOT_DIR:$ENV{PATH}" if $ENV{PATH} !~ m{\Q$ROOT_DIR\E/?:};
 $ENV{PERL5LIB} = join(':', "${ROOT_DIR}/lib", (grep { defined } $ENV{PERL5LIB}))
     if not $ENV{PERL5LIB} or $ENV{PERL5LIB} !~ m{\Q$ROOT_DIR\E(?:/lib)?/?:};
 $ENV{DH_AUTOSCRIPTDIR} = "$ROOT_DIR/autoscripts";
+# Nothing in the tests requires root.
+$ENV{DEB_RULES_REQUIRES_ROOT} = 'no';
 
 # Drop DEB_BUILD_PROFILES and DEB_BUILD_OPTIONS so they don't interfere
 delete($ENV{DEB_BUILD_PROFILES});
@@ -37,7 +39,7 @@ our @EXPORT = qw(
     each_compat_up_to_and_incl_subtest each_compat_subtest
     each_compat_from_and_above_subtest run_dh_tool
     uid_0_test_is_ok create_empty_file readlines
-    error
+    error find_script
 );
 
 our ($TEST_DH_COMPAT, $ROOT_OK, $ROOT_CMD);
@@ -87,7 +89,7 @@ sub run_dh_tool {
 sub uid_0_test_is_ok {
     return $ROOT_OK if defined($ROOT_OK);
     my $ok = 0;
-    if (Debian::Debhelper::Dh_Lib::DH_ENABLE_RRR_SUPPORT or $< == 0) {
+    if ($< == 0) {
         $ok = 1;
     } else {
         system('fakeroot true 2>/dev/null');
@@ -196,6 +198,26 @@ sub readlines {
     close $h;
     chop @lines;
     return \@lines;
+}
+
+# In *inst order (find_script will shuffle them around for *rm order)
+my @SNIPPET_FILE_TEMPLATES = (
+	'debian/#PACKAGE#.#SCRIPT#.debhelper',
+	'debian/.debhelper/generated/#PACKAGE#/#SCRIPT#.service',
+);
+
+sub find_script {
+	my ($package, $script) = @_;
+	my @files;
+	for my $template (@SNIPPET_FILE_TEMPLATES) {
+		my $file = ($template =~ s/#PACKAGE#/$package/r);
+		$file =~ s/#SCRIPT#/$script/;
+		push(@files, $file) if -f $file;
+	}
+	if ($script eq 'postrm' or $script eq 'prerm') {
+		@files = reverse(@files);
+	}
+	return @files;
 }
 
 1;

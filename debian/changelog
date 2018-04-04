@@ -1,3 +1,253 @@
+debhelper (11.1.6) unstable; urgency=medium
+
+  * Dh_Lib: Avoid passing invalid parameters to a function, which
+    caused tons of "package ARRAY(...) is not in control info"
+    warnings from dh in some cases.  It triggers when dh thinks
+    the package might have architecture qualified debhelper config
+    files.  The warning is harmless (besides the noise) for all
+    native builds and most cross builds, but it did invalidate
+    attempt to make pkgfile() use "DEB_TARGET_ARCH{,_OS}"
+    (see 11.1.5~alpha1).  Thanks to Andreas Beckmann for reporting
+    the issue.  (Closes: #891546)
+  * dh: Refactor handling of sequences to simplify some code paths.
+  * autopkgtests: Remove "use-name" tests as it no longer works.
+    The debhelper module makes assumptions in which directory it is
+    run from and the test breaks these assumptions.
+  * debian/control: Comment out versioned dependency on make.
+    It is not strictly necessary for Debian and causes issues with
+    make-guile.  On the other hand, it is useful for people
+    backporting debhelper on derivatives and hench leaving it as a
+    comment.  (Closes: #892586)
+  * debian/control: Bump dependency on dh-autoreconf for the fix for
+    #889567.
+  * dh_installinfo: Accept --sourcedir like the documentation says
+    for compat 11.  Prevently the option was incorrectly silently
+    ignored.  Thanks to Nicolas Boulenguez for the report and the
+    patch.  (Closes: #894226)
+  * dh_ucf.1: Apply patch from Nicolas Boulenguez to add missing
+    documentation of the "--all" and non-option parameters.
+    (Closes: #894228)
+  * dh_installxfonts: Apply patch from Nicolas Boulenguez.  This
+    ensures that the generated maintscript snippets are bit-for-bit
+    reproducible when a package ships xfons in multiple fonts
+    directories.  (Closes: #894227)
+  * Dh_Lib: Improve the "make_symlink" code to avoid non-compliant
+    symlinks when the link name was not a normalized path.  Note
+    that ".."-segments are now disallowed in the link name (but not
+    the link target).  Thanks to Nicolas Boulenguez for reporting
+    the bug plus the test cases.  (Closes: #894229)
+  * dh_installinfo: Report installed files to dh_missing.  Thanks
+    to Daniel Kahn Gillmor for reporting this omission.
+    (Closes: #893160)
+  * Dh_Lib: Make Dh_Lib loadable again without a debian/control being
+    present.  This makes the autopkgtests work again.
+
+ -- Niels Thykier <niels@thykier.net>  Thu, 29 Mar 2018 19:26:59 +0000
+
+debhelper (11.1.5) unstable; urgency=medium
+
+  * Upload to unstable.
+  * Add a warning for using the new experimental feature for
+    requesting the compat level via the Build-Depends field.
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 25 Feb 2018 10:05:22 +0000
+
+debhelper (11.1.5~alpha1) experimental; urgency=medium
+
+  * dh_installdocs: Add missing documentation about --sourcedir
+    in compat 11.
+  * dh_installdocs: Document that d/tmp is used by default
+    in compat 11.
+  * dh_installexamples: Ditto.
+  * dh_installinfo: Ditto.
+  * dh_installman: Ditto.
+  * meson.pm: Apply patch from Jakub Wilk to fix typo in the name
+    of the "C.UTF-8" locale.
+  * autoscripts/postinst-systemd-restart: Apply patch from
+    Christoph Biedl to fix indentation.  (Closes: #890373)
+  * dh_testroot: With the advent of DEB_RULES_REQUIRES_ROOT, it
+    no longer needs to read debian/control to tell whether root
+    is needed or not.  However, the warning remains for calling
+    dh_testroot outside the source root (as we may need to check
+    the compat level in a future version of debhelper).
+  * makefile.pm: Synchronize output from make (via -O) when
+    make runs in parallel except when STDOUT is a TTY.  Thanks
+    to Goswin von Brederlow for the suggestion.  (Closes: #768791)
+  * dh_gencontrol: Avoid uninitialized value warning when there
+    are no build-ids (e.g. because the builder disabled the
+    dbgsym building via DEB_BUILD_OPTIONS).  This regression
+    was introduced in 11.1.  Thanks to Christian Marillat for
+    reporting the bug.  (Closes: #890736)
+  * Dh_Lib: pkgfile() now properly uses for DEB_TARGET_ARCH{,_OS}
+    when the package is set to be built for the target
+    architecture.
+  * d/control: Drop dependency on binutils; it does not reflect
+    our actual requirement and the package or builder will ensure
+    that the current binutils is installed for other reasons
+    any way.  Thanks to Helmut Grohne for the report.
+    (Closes: #891187)
+  * Dh_Lib: Add an experimental feature to determine the requested
+    compat level from the Build-Depends field.
+
+ -- Niels Thykier <niels@thykier.net>  Sat, 24 Feb 2018 16:01:31 +0000
+
+debhelper (11.1.4) unstable; urgency=medium
+
+  * qmake.pm/qmake4.pm: Avoid global state in the build systems.
+  * dh_makeshlibs: Fix --no-act, which could still cause writes
+    to the shlibs file.  Thanks to Sven Joachim for reporting it.
+    (Closes: #888974)
+  * dh_installdocs: Discard auto-detected main doc package when
+    passed -A/--all as it causes file-conflicts.
+    (Closes: #886108, #888294)
+  * Dh_Lib: Fix regression where "foo{bar}" would not be matched
+    when the pattern was handled as a glob.  The bug was
+    introduced in debhelper/10.6.  Thanks to Wouter Verhelst for
+    finding the bug.  (Closes: #888251)
+  * d/control: Update the Vcs-* fields to point to
+    salsa.debian.org as a part of the migration from alioth.
+  * d/control: Update maintainer address debhelper@packages.d.o
+    as a part of the migration from alioth.  Any subscription
+    to debhelper-devel@lists.alioth.debian.org should be
+    replaced by a subscription in tracker.debian.org or
+    salsa.debian.org.
+  * d/control: Remove Bernhard R. Link from uploaders as he does
+    not appear to be active in debhelper at the moment.  Thanks
+    to Bernhard for his past contributions.
+  * d/control: Bump (Build-)Dependency on dpkg to ensure that
+    dpkg provides DEB_RULES_REQUIRES_ROOT and DEB_GAIN_ROOT_CMD
+    as a part of its Rules-Requires-Root support.
+  * Dh_Lib.pm: Rely on DEB_RULES_REQUIRES_ROOT instead of the
+    field to determine whether or not tools may "root-only"
+    actions (such as chown'ing).
+  * d/control: Bump dependency on dh-autoreconf to ensure that
+    packages do not experience #887482.
+  * makefile.pm: Ensure that command line arguments are passed
+    deterministically to make when cross-compiling.
+
+ -- Niels Thykier <niels@thykier.net>  Wed, 31 Jan 2018 21:36:13 +0000
+
+debhelper (11.1.3) unstable; urgency=medium
+
+  * autoscripts/*: Improve rollback handling of many scripts.
+    Notably a lot of scripts failed to rerun the postinst parts
+    on an "abort-upgrade".  (Closes: #446856)
+  * debian/control: Add a Breaks on meson to ensure that we have
+    meson (>= 0.40.0) as the meson build system uses --wrap-mode.
+    This is mostly relevant for backports.
+  * Dh_Lib.pm: When printing commands (e.g. for doit), also show
+    changes to the environment (when done as a part of the
+    command).
+  * ninja.pm: Set LC_ALL=C.UTF-8 when calling ninja to avoid
+    meson choking on UTF-8 characters when it embeds itself into
+    e.g. the build or install.  (Closes: #873831)
+  * dh: Remove the assumption that sequences will supply only
+    "safe no-op" parameters to commands.  Thanks to Axel Beckert
+    and Sascha Steinbiss for the report.  (Closes: #887727)
+
+ -- Niels Thykier <niels@thykier.net>  Sat, 20 Jan 2018 18:26:06 +0000
+
+debhelper (11.1.2) unstable; urgency=medium
+
+  * dh: Fix non-sense error about a missing "startpoint object
+    method".
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 07 Jan 2018 21:31:40 +0000
+
+debhelper (11.1.1) unstable; urgency=medium
+
+  * dh: Fix an off-by-one in a compat check.  This fixes an
+    internal error for compat 9 packages that requires dh to
+    recurse into the debian/rules file.  Thanks to Helmut
+    Grohne for reporting the bug.  (Closes: #886518)
+
+ -- Niels Thykier <niels@thykier.net>  Sun, 07 Jan 2018 09:48:17 +0000
+
+debhelper (11.1) unstable; urgency=medium
+
+  [ Paul Tagliamonte ]
+  * dh: Provide the DH_EXTRA_ADDONS environment as a method for
+    e.g. derivatives to enable additional debhelper add-ons.
+    It is *not* a replacement for the --with parameter (which
+    package maintainers should still use).  (Closes: #570935)
+
+  [ Hideki Yamane ]
+  * Fix typo of unnecessary.  (Closes: #884574)
+
+  [ Niels Thykier ]
+  * dh_missing: Support wildcards in debian/not-installed.  Thanks
+    to Maximiliano Curia for the suggestion.  (Closes: #884556)
+  * dh_missing: Tweak handling of missing source directory and
+    single binary packages.
+  * dh_missing: Make --list-missing the default in compat 12.
+    Thanks to Daniel Leidert and Christian Göttsche for the
+    suggestions.  (Closes: #650129, #858834)
+  * meson.pm: Set LC_ALL to C.UTF-8 when invoking meson and
+    debcrossgen (helper tool for cross-building).  Thanks to
+    Jeremy Bicha for the suggestion.  (Closes: #873831)
+  * dh_makeshlibs: Avoid forking a shell per line in the
+    generated shlibs file.
+  * dh_makeshlibs: Find all libraries with an unversioned SONAME
+    field (and not just the unversioned ones containing ".so").
+  * dh_makeshlibs: In compat 12, stop passing ELF binaries without
+    a SONAME to dpkg-gensymbols.  Thanks to Steve Langasek for the
+    report.  (Closes: #653640)
+  * dh_compress: In compat 12, stop compressing any thing in
+    /usr/share/doc/$pkg/examples.  Thanks to Piotr Ożarowski for
+    the suggestion.  (Closes: #593382)
+  * dh_installinit: Support a new --no-enable parameter to setup the
+    init script with the "defaults-disabled" and add the proper
+    versioned dependency on "init-system-helpers (>= 1.51)", which is
+    the first (functional) version with support for
+    "defaults-disabled".  Thanks to Laurent Bigonville for the
+    report and Evgeni Golov for filing #857452.  (Closes: #709384)
+  * Dh_Lib.pm: Make "exit 1" the default error-handler instead of
+    "exit $?" as this makes it easier to migrate from sed-based
+    autoscript substitutions to the new hash-based ones.
+  * autoscripts/*systemd*: Also use "|| true" in removal scripts for
+    systemd related tools if we do it in other scripts for the same
+    command.  Thanks to Laurent Bigonville for the report.
+    (Closes: #761272)
+  * dh_installinit: Perform the autoscript substitutions without
+    needing a shell.
+  * dh_clean: Skip cleaning in the '.pc' and '_darcs' directories.
+    (Closes: #566861)
+  * dh_strip: Do not strip debug symbols in ".../debug/.build-id/".
+    Thanks to Mattia Rizzolo for reporting the bug.
+    (Closes: #886037)
+  * dh_gencontrol: Deduplicate debug-ids before inserting them into
+    the control file.  Thanks to Mattia Rizzolo for reporting the
+    bug.  (Closes: #886038)
+  * dh: Rewrite sequence handling to ensure that dh does not "inline"
+    a subtarget of a target it recurses into.  Thanks to James
+    Cowgill for reporting the bug.  (Closes: #880840)
+  * d/control: Add a Breaks against cmake (<< 3.8~) to ensure that
+    cmake response to the /run change in compat 11.  Thanks to
+    Adrian Bunk for the suggestion.  (Closes: #886127)
+  * Dh_Lib.pm/dh_testroot: Support the DEB_GAIN_ROOT_CMD environment
+    that replaces DPKG_GAIN_ROOT_CMD.
+  * dh_installinit/dh_installsystemd: Re-order snippets so service
+    handling is always the first to happen in removal scripts and last
+    to happen on install scripts.  This means that configuration file
+    management and systemd-tmpfiles handling will now always happen
+    before the service is started on install/upgrade.  Thanks to
+    Дилян Палаузов and Simon McVittie for reporting the bug.
+    (Closes: #814285, #885998)
+    - Note that the deprecated dh_systemd_enable and dh_systemd_start
+      helpers have not been changed.  Services handled by these may
+      still be started before configuration management happens.
+  * debian/control: Drop some very old versioned constraints that are
+    no longer important.
+  * dh_installsystemd: Fix NOOP PROMISE to account for the tmpfiles.d
+    files.
+  * debian/control: Bump Standards-Versions to 4.1.3 - no additional
+    changes required.
+
+  [ Translations ]
+  * Update French translation (Baptiste Jammet)  (Closes: #886279)
+
+ -- Niels Thykier <niels@thykier.net>  Sat, 06 Jan 2018 21:17:47 +0000
+
 debhelper (11~bpo9+1) stretch-backports; urgency=medium
 
   * Rebuild for stretch-backports.

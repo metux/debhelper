@@ -44,8 +44,8 @@ However, it is B<not> a method to exclude files from being installed
 by any of the debhelper tool.  If you want a tool to not install a
 given file, please use its B<--exclude> option (where available).
 
-Please keep in mind that B<dh_missing> will B<not> expand wildcards in
-this file.
+B<dh_missing> will expand wildcards in this file (since debhelper 11.1).
+Wildcards without matches will be ignored.
 
 =back
 
@@ -59,6 +59,8 @@ Warn on stderr about source files not installed to somewhere.
 
 Note that files that are excluded from being moved via the B<-X> option are not
 warned about.
+
+This is the default in compat 12 and later.
 
 =item B<--fail-missing>
 
@@ -80,6 +82,9 @@ my (@installed, %helpers);
 my $srcdir = '.';
 $srcdir = $dh{SOURCEDIR} if defined $dh{SOURCEDIR};
 
+# --list-missing is the default in compat 12+
+$dh{LIST_MISSING} = 1 if !$dh{FAIL_MISSING} && !compat(11);
+
 if (!$dh{LIST_MISSING} && !$dh{FAIL_MISSING}) {
 	exit 0;
 }
@@ -90,14 +95,15 @@ if ($srcdir eq '.') {
 }
 
 if (! -d $srcdir) {
-	if (scalar(getpackages()) == 1 && not defined($dh{SOURCEDIR})) {
+	# If there was no explicit source directory, then we do not care
+	# if it is missing.
+	exit(0) if not defined $dh{SOURCEDIR};
+
+	if (scalar(getpackages()) == 1 && defined($dh{SOURCEDIR})) {
 		warning("$srcdir does not exist and there is only binary package.");
 		warning("Assuming everything is installed directly into the package directory.");
 		exit(0);
 	}
-	# If there was no explicit source directory, then we do not care
-	# if it is missing.
-	exit(0) if not defined $dh{SOURCEDIR};
 	if (compat(10)) {
 		# Prevent "dh $@ --list-missing --destdir=... ..." from failing in compat 10.
 		warning("Cannot check if installation is missing files: $srcdir does not exist");
@@ -107,7 +113,7 @@ if (! -d $srcdir) {
 	}
 }
 
-for my $file (<debian/.debhelper/generated/*/installed-by-*>) {
+for my $file (glob('debian/.debhelper/generated/*/installed-by-*')) {
 	my ($target_pkg, $helper) = ('unknown', 'unknown');
 	my $had_files = 0;
 	my %seen;
@@ -130,10 +136,21 @@ for my $file (<debian/.debhelper/generated/*/installed-by-*>) {
 my @missing;
 if ( -f 'debian/not-installed') {
 	my @not_installed = filearray('debian/not-installed');
-	foreach (@not_installed) {
-		s:^\s*:debian/tmp/: unless m:^\s*debian/tmp/:;
+	for my $pattern (@not_installed) {
+		my @matches;
+		# Add an explicit d/tmp if absent as there is no point in
+		# looking outside the debian staging directory
+		$pattern =~ s:^\s*:debian/tmp/: unless $pattern =~ m:^\s*debian/tmp/:;
+		@matches = glob_expand(['.'], \&glob_expand_error_handler_silently_ignore, $pattern);
+		if (@matches) {
+			# Assume classify them as installed
+			push(@installed, @matches);
+		} else {
+			# Assume it is not a pattern and classify it as installed
+			push(@installed, $pattern);
+		}
 	}
-	# Pretend that these are also installed.
+
 	push(@installed, @not_installed);
 }
 my $installed=join("|", map {

@@ -80,7 +80,17 @@ sub do_make {
 	clean_jobserver_makeflags();
 
 	# Note that this will override any -j settings in MAKEFLAGS.
-	unshift @_, "-j" . ($this->get_parallel() > 0 ? $this->get_parallel() : "");
+	my $parallel = $this->get_parallel();
+	if ($parallel == 0 or $parallel > 1) {
+		# We have to use the empty string for "unlimited"
+		$parallel = '' if $parallel == 0;
+		# -O is for synchronizing the output; only if STDOUT
+		# is not a TTY
+		unshift(@_, '-O') if not -t STDOUT;
+		unshift(@_, "-j${parallel}");
+	} else {
+		unshift(@_, '-j1');
+	}
 
 	my @root_cmd;
 	if (exists($this->{_run_make_as_root}) and $this->{_run_make_as_root}) {
@@ -139,7 +149,8 @@ sub check_auto_buildable {
 sub build {
 	my $this=shift;
 	if (ref($this) eq 'Debian::Debhelper::Buildsystem::makefile' and is_cross_compiling()) {
-		while (my ($var, $tool) = each %DEB_DEFAULT_TOOLS) {
+		for my $var (sort(keys(%DEB_DEFAULT_TOOLS))) {
+			my $tool = $DEB_DEFAULT_TOOLS{$var};
 			if ($ENV{$var}) {
 				unshift @_, $var . "=" . $ENV{$var};
 			} else {

@@ -14,9 +14,6 @@ use constant {
 	# Lowest compat level that does *not* cause deprecation
 	# warnings
 	'LOWEST_NON_DEPRECATED_COMPAT_LEVEL' => 9,
-	# Highest "open-beta" compat level.  Remember to notify
-	# debian-devel@l.d.o before bumping this.
-	'BETA_TESTER_COMPAT' => 10,
 	# Highest compat level permitted
 	'MAX_COMPAT_LEVEL' => 12,
 	# Magic value for xargs
@@ -25,9 +22,6 @@ use constant {
 	'DH_BUILTIN_VERSION' => \'<DH_LIB_VERSION>', #'# Hi emacs.
 	# Default Package-Type / extension (must be aligned with dpkg)
 	'DEFAULT_PACKAGE_TYPE' => 'deb',
-
-	# Kill-switch for R³ (for backports)
-	'DH_ENABLE_RRR_SUPPORT' => 0,
 };
 
 use constant {
@@ -184,7 +178,7 @@ sub init {
 	# If no error handling function was specified, just propagate
 	# errors out.
 	if (! exists $dh{ERROR_HANDLER} || ! defined $dh{ERROR_HANDLER}) {
-		$dh{ERROR_HANDLER}='exit \$?';
+		$dh{ERROR_HANDLER}='exit 1';
 	}
 
 	$dh{U_PARAMS} //= [];
@@ -194,6 +188,10 @@ sub init {
 # on, if it's exiting successfully.
 my $write_log=1;
 sub END {
+	# If there is no 'debian/control', then we are not being run from
+	# a package directory and then the write_log will not do what we
+	# expect.
+	return if not -f 'debian/control';
 	if ($? == 0 && $write_log && (compat(9, 1) || $ENV{DH_INTERNAL_OVERRIDE})) {
 		write_log(basename($0), @{$dh{DOPACKAGES}});
 	}
@@ -343,6 +341,15 @@ sub _doit {
 			if (defined(my $output = $options->{stdout})) {
 				open(STDOUT, '>', $output) or error("redirect STDOUT failed: $!");
 			}
+			if (defined(my $update_env = $options->{update_env})) {
+				while (my ($k, $v) = each(%{$update_env})) {
+					if (defined($v)) {
+						$ENV{$k} = $v;
+					} else {
+						delete($ENV{$k});
+					}
+				}
+			}
 		}
 		# Force execvp call to avoid shell.  Apparently, even exec can
 		# involve a shell if you don't do this.
@@ -355,6 +362,25 @@ sub _format_cmdline {
 	my (@cmd) = @_;
 	my $options = ref($cmd[0]) ? shift(@cmd) : {};
 	my $cmd_line = escape_shell(@cmd);
+	if (defined(my $update_env = $options->{update_env})) {
+		my $need_env = 0;
+		my @params;
+		for my $key (sort(keys(%{$update_env}))) {
+			my $value = $update_env->{$key};
+			if (defined($value)) {
+				my $quoted_key = escape_shell($key);
+				push(@params, join('=', $quoted_key, escape_shell($value)));
+				# shell does not like: "FU BAR"=1 cmd
+				# if the ENV key has weird symbols, the best bet is to use env
+				$need_env = 1 if $quoted_key ne $key;
+			} else {
+				$need_env = 1;
+				push(@params, escape_shell("--unset=${key}"));
+			}
+		}
+		unshift(@params, 'env', '--') if $need_env;
+		$cmd_line = join(' ', @params, $cmd_line);
+	}
 	if (defined(my $dir = $options->{chdir})) {
 		$cmd_line = join(' ', 'cd', escape_shell($dir), '&&', $cmd_line) if $dir ne '.';
 	}
@@ -652,6 +678,7 @@ sub dirname {
 
 # Pass in a number, will return true iff the current compatibility level
 # is less than or equal to that number.
+my $compat_from_bd;
 {
 	my $warned_compat = $ENV{DH_INTERNAL_TESTSUITE_SILENT_WARNINGS} ? 1 : 0;
 	my $c;
@@ -659,6 +686,8 @@ sub dirname {
 	sub compat {
 		my $num=shift;
 		my $nowarn=shift;
+
+		getpackages() if not defined($compat_from_bd);
 	
 		if (! defined $c) {
 			$c=1;
@@ -672,15 +701,23 @@ sub dirname {
 				}
 				else {
 					chomp $l;
-					$c=$l;
-					$c =~ s/^\s*+//;
-					$c =~ s/\s*+$//;
-					if ($c !~ m/^\d+$/) {
-						error("debian/compat must contain a positive number (found: \"$c\")");
+					my $new_compat = $l;
+					$new_compat =~ s/^\s*+//;
+					$new_compat =~ s/\s*+$//;
+					if ($new_compat !~ m/^\d+$/) {
+						error("debian/compat must contain a positive number (found: \"${new_compat}\")");
 					}
+					if (defined($compat_from_bd) and $compat_from_bd != -1) {
+						warning("Please specific the debhelper compat level exactly once.");
+						warning(" * debian/compat requests compat ${new_compat}.");
+						warning(" * debian/control requests compat ${compat_from_bd} via \"debhelper-compat (= ${compat_from_bd})\"");
+						error("debhelper compat level specified both in debian/compat and via build-dependency on debhelper-compat");
+					}
+					$c = $new_compat;
 				}
-			}
-			elsif (not $nowarn) {
+			} elsif ($compat_from_bd != -1) {
+				$c = $compat_from_bd;
+			} elsif (not $nowarn) {
 				error("Please specify the compatibility level in debian/compat");
 			}
 
@@ -784,9 +821,10 @@ sub default_sourcedir {
 			for my $pkg (@{$package}) {
 				push(@try, "debian/${pkg}.${filename}");
 				if ($check_expensive) {
+					my $cross_type = uc(package_cross_type($pkg));
 					push(@try,
-						 "debian/${pkg}.${filename}.".hostarch(),
-						 "debian/${pkg}.${filename}.".dpkg_architecture_value("DEB_HOST_ARCH_OS"),
+						 "debian/${pkg}.${filename}.".dpkg_architecture_value("DEB_${cross_type}_ARCH"),
+						 "debian/${pkg}.${filename}.".dpkg_architecture_value("DEB_${cross_type}_ARCH_OS"),
 					);
 				}
 			}
@@ -794,9 +832,10 @@ sub default_sourcedir {
 			# Avoid checking for hostarch+hostos unless we have reason
 			# to believe that they exist.
 			if ($check_expensive) {
+				my $cross_type = uc(package_cross_type($package));
 				push(@try,
-					 "debian/${package}.${filename}.".hostarch(),
-					 "debian/${package}.${filename}.".dpkg_architecture_value("DEB_HOST_ARCH_OS"),
+					 "debian/${package}.${filename}.".dpkg_architecture_value("DEB_${cross_type}_ARCH"),
+					 "debian/${package}.${filename}.".dpkg_architecture_value("DEB_${cross_type}_ARCH_OS"),
 					);
 			}
 			push(@try, "debian/$package.$filename");
@@ -912,12 +951,20 @@ sub _tool_version {
 # 3: filename of snippet
 # 4: either text: shell-quoted sed to run on the snippet. Ie, 's/#PACKAGE#/$PACKAGE/'
 #    or a sub to run on each line of the snippet. Ie sub { s/#PACKAGE#/$PACKAGE/ }
+#    or a hashref with keys being variables and values being their replacement.  Ie. { PACKAGE => $PACKAGE }
+# 5: Internal usage only
 sub autoscript {
-	my ($package, $script, $filename, $sed) = @_;
+	my ($package, $script, $filename, $sed, $extra_options) = @_;
 
 	my $tool_version = _tool_version();
 	# This is the file we will modify.
 	my $outfile="debian/".pkgext($package)."$script.debhelper";
+	if ($extra_options && exists($extra_options->{'snippet-order'})) {
+		my $order = $extra_options->{'snippet-order'};
+		error("Internal error - snippet order set to unknown value: \"${order}\"")
+			if $order ne 'service';
+		$outfile = generated_file($package, "${script}.${order}");
+	}
 
 	# Figure out what shell script snippet to use.
 	my $infile;
@@ -1151,8 +1198,14 @@ sub glob_expand {
 	for my $pattern (@patterns) {
 		my @m;
 		for my $dir (@dirs) {
-			@m = bsd_glob("$dir/$pattern", GLOB_CSH & ~(GLOB_NOMAGIC|GLOB_TILDE));
-			last if @m;# > 1 or (@m and (-l $m[0] or -e _));
+			my $full_pattern = "$dir/$pattern";
+			@m = bsd_glob($full_pattern, GLOB_CSH & ~(GLOB_NOMAGIC|GLOB_TILDE));
+			last if @m;
+			# Handle "foo{bar}" pattern (#888251)
+			if (-l $full_pattern or -e _) {
+				push(@m, $full_pattern);
+				last;
+			}
 		}
 		if (not @m) {
 			$error_handler //= \&glob_expand_error_handler_reject;
@@ -1324,7 +1377,7 @@ sub is_cross_compiling {
 # As a side effect, populates %package_arches and %package_types
 # with the types of all packages (not only those returned).
 my (%package_types, %package_arches, %package_multiarches, %packages_by_type,
-    %package_sections, $sourcepackage, %rrr, %package_cross_type);
+    %package_sections, $sourcepackage, %package_cross_type);
 
 # Returns source package name
 sub sourcepackage {
@@ -1348,7 +1401,8 @@ sub getpackages {
 	my $arch="";
 	my $section="";
 	my ($package_type, $multiarch, %seen, @profiles, $source_section,
-		$included_in_build_profile, $cross_type, $cross_target_arch);
+		$included_in_build_profile, $cross_type, $cross_target_arch,
+		%bd_fields, $bd_field_value);
 	if (exists $ENV{'DEB_BUILD_PROFILES'}) {
 		@profiles=split /\s+/, $ENV{'DEB_BUILD_PROFILES'};
 	}
@@ -1366,21 +1420,73 @@ sub getpackages {
 
 		if (/^Source:\s*(.*)/i) {
 			$sourcepackage = $1;
-			next;
-		} elsif (/^Rules-Requires-Root:\s*(.*)/i) {
-			for my $keyword (split(' ', $1)) {
-				$rrr{$keyword} = 1;
-			}
+			$bd_field_value = undef;
 			next;
 		} elsif (/^Section:\s(.*)$/i) {
 			$source_section = $1;
+			$bd_field_value = undef;
 			next;
+		} elsif (/^(Build-Depends(?:-Arch|-Indep)?):\s*(.*)$/i) {
+			my ($field, $value) = (lc($1), $2);
+			$bd_field_value = [$value];
+			$bd_fields{$field} = $bd_field_value;
+		} elsif (/^\S/) {
+			$bd_field_value = undef;
+		} elsif (/^\s/ and $bd_field_value) {
+			push(@{$bd_field_value}, $_);
 		}
 		next if not $_ and not defined($sourcepackage);
 		last if (!$_ or eof); # end of stanza.
 	}
 	error("could not find Source: line in control file.") if not defined($sourcepackage);
-	$rrr{'binary-targets'} = 1 if not %rrr;
+	if (%bd_fields) {
+		my ($dh_compat_bd, $final_level);
+		for my $field (sort(keys(%bd_fields))) {
+			my $value = join(' ', @{$bd_fields{$field}});
+			$value =~ s/\s*,\s*$//;
+			for my $dep (split(/\s*,\s*/, $value)) {
+				if ($dep =~ m/^debhelper-compat\s*[(]\s*=\s*(${PKGVERSION_REGEX})\s*[)]$/) {
+					my $version = $1;
+					if ($version =~m/^(\d+)\D.*$/) {
+						my $guessed_compat = $1;
+						warning("Please use the compat level as the exact version rather than the full version.");
+						warning("  Perhaps you meant: debhelper-compat (= ${guessed_compat})");
+						if ($field ne 'build-depends') {
+							warning(" * Also, please move the declaration to Build-Depends (it was found in ${field})");
+						}
+						error("Invalid compat level ${version}, derived from relation: ${dep}");
+					}
+					$final_level = $version;
+					error("Duplicate debhelper-compat build-dependency: ${dh_compat_bd} vs. ${dep}") if $dh_compat_bd;
+					error("The debhelper-compat build-dependency must be in the Build-Depends field (not $field)")
+						if $field ne 'build-depends';
+					$dh_compat_bd = $dep;
+				} elsif ($dep =~ m/^debhelper-compat\s*(?:\S.*)?$/) {
+					my $clevel = "${\MAX_COMPAT_LEVEL}";
+					eval {
+						require Debian::Debhelper::Dh_Version;
+						$clevel = $Debian::Debhelper::Dh_Version::version;
+					};
+					$clevel =~ s/^\d+\K\D.*$//;
+					warning("Found invalid debhelper-compat relation: ${dep}");
+					warning(" * Please format the relation as (example): debhelper-compat (= ${clevel})");
+					warning(" * Note that alternatives, architecture restrictions, build-profiles etc. are not supported.");
+					if ($field ne 'build-depends') {
+						warning(" * Also, please move the declaration to Build-Depends (it was found in ${field})");
+					}
+					warning(" * If this is not possible, then please remove the debhelper-compat relation and insert the");
+					warning("   compat level into the file debian/compat.  (E.g. \"echo ${clevel} > debian/compat\")");
+					error("Could not parse desired debhelper compat level from relation: $dep");
+				}
+			}
+		}
+		if (defined($final_level)) {
+			warning("The use of \"debhelper-compat (= ${final_level})\" is experimental and may change (or be retired) without notice");
+		}
+		$compat_from_bd = $final_level // -1;
+	} else {
+		$compat_from_bd = -1;
+	}
 
 	while (<$fd>) {
 		chomp;
@@ -1473,32 +1579,36 @@ sub getpackages {
 # - Takes an optional keyword; if passed, this will return true if the keyword is listed in R^3 (Rules-Requires-Root)
 # - If the optional keyword is omitted or not present in R^3 and R^3 is not 'binary-targets', then returns false
 # - Returns true otherwise (i.e. keyword is in R^3 or R^3 is 'binary-targets')
-sub should_use_root {
-	my ($keyword) = @_;
-	return 1 if not DH_ENABLE_RRR_SUPPORT;
-	getpackages() if not %rrr;
+{
+	my %rrr;
+	sub should_use_root {
+		my ($keyword) = @_;
+		my $rrr_env = $ENV{'DEB_RULES_REQUIRES_ROOT'} // 'binary-targets';
+		$rrr_env =~ s/^\s++//;
+		$rrr_env =~ s/\s++$//;
+		return 0 if $rrr_env eq 'no';
+		return 1 if $rrr_env eq 'binary-targets';
+		return 0 if not defined($keyword);
 
-	return 0 if exists($rrr{'no'});
-	return 1 if exists($rrr{'binary-targets'});
-	return 0 if not defined($keyword);
-	return 1 if exists($rrr{$keyword});
-	return 0;
+		%rrr = map { $_ => 1 } split(' ', $rrr_env) if not %rrr;
+		return 1 if exists($rrr{$keyword});
+		return 0;
+	}
 }
 
 # Returns the "gain root command" as a list suitable for passing as a part of the command to "doit()"
 sub gain_root_cmd {
-	my $raw_cmd = $ENV{DPKG_GAIN_ROOT_CMD};
+	my $raw_cmd = $ENV{DEB_GAIN_ROOT_CMD};
 	return if not defined($raw_cmd) or $raw_cmd =~ m/^\s*+$/;
 	return split(' ', $raw_cmd);
 }
 
 sub root_requirements {
-	return 'legacy-root' if not DH_ENABLE_RRR_SUPPORT;
-
-	getpackages() if not %rrr;
-
-	return 'none' if exists($rrr{'no'});
-	return 'legacy-root' if exists($rrr{'binary-targets'});
+	my $rrr_env = $ENV{'DEB_RULES_REQUIRES_ROOT'} // 'binary-targets';
+	$rrr_env =~ s/^\s++//;
+	$rrr_env =~ s/\s++$//;
+	return 'none' if $rrr_env eq 'no';
+	return 'legacy-root' if $rrr_env eq 'binary-targets';
 	return 'targeted-promotion';
 }
 
@@ -1609,6 +1719,18 @@ sub is_udeb {
 	}
 }
 
+sub _concat_slurp_script_files {
+	my (@files) = @_;
+	my $res = '';
+	for my $file (@files) {
+		open(my $fd, '<', $file) or error("open($file) failed: $!");
+		my $f = join('', <$fd>);
+		close($fd);
+		$res .= $f;
+	}
+	return $res;
+}
+
 # Handles #DEBHELPER# substitution in a script; also can generate a new
 # script from scratch if none exists but there is a .debhelper file for it.
 sub debhelper_script_subst {
@@ -1618,34 +1740,56 @@ sub debhelper_script_subst {
 	my $tmp=tmpdir($package);
 	my $ext=pkgext($package);
 	my $file=pkgfile($package,$script);
+	my $service_script = generated_file($package, "${script}.service", 0);
+	my @generated_scripts = ("debian/$ext$script.debhelper", $service_script);
+	if ($script eq 'prerm' or $script eq 'postrm') {
+		@generated_scripts = reverse(@generated_scripts);
+	}
+	@generated_scripts = grep { -f } @generated_scripts;
 
 	if ($file ne '') {
-		if (-f "debian/$ext$script.debhelper") {
+		if (@generated_scripts) {
+			if ($dh{VERBOSE}) {
+				verbose_print('cp -f ' . escape_shell($file) . " $tmp/DEBIAN/$script");
+				verbose_print("perl -p -i -e \"s~#DEBHELPER#~qx{cat @generated_scripts}~eg\" $tmp/DEBIAN/$script");
+			}
 			# Add this into the script, where it has #DEBHELPER#
-			doit({ stdout => "$tmp/DEBIAN/$script" }, 'perl', '-pe',
-				 "s~#DEBHELPER#~qx{cat debian/$ext$script.debhelper}~eg", $file);
-		}
-		else {
+			my $text = _concat_slurp_script_files(@generated_scripts);
+			if (not $dh{NO_ACT}) {
+				open(my $out_fd, '>', "$tmp/DEBIAN/$script") or error("open($tmp/DEBIAN/$script) failed: $!");
+				open(my $in_fd, '<', $file) or error("open($file) failed: $!");
+				while (my $line = <$in_fd>) {
+					$line =~ s/#DEBHELPER#/$text/g;
+					print {$out_fd} $line;
+				}
+				close($in_fd);
+				close($out_fd) or error("close($tmp/DEBIAN/$script) failed: $!");
+			}
+		} else {
 			# Just get rid of any #DEBHELPER# in the script.
 			doit({ stdout => "$tmp/DEBIAN/$script" }, 'sed', 's/#DEBHELPER#//', $file);
 		}
 		reset_perm_and_owner('0755', "$tmp/DEBIAN/$script");
 	}
-	elsif ( -f "debian/$ext$script.debhelper" ) {
+	elsif (@generated_scripts) {
 		if ($dh{VERBOSE}) {
 			verbose_print(q{printf '#!/bin/sh\nset -e\n' > } . "$tmp/DEBIAN/$script");
-			verbose_print("cat debian/$ext$script.debhelper >> $tmp/DEBIAN/$script");
+			verbose_print("cat @generated_scripts >> $tmp/DEBIAN/$script");
 		}
-		open(my $out_fd, '>', "$tmp/DEBIAN/$script") or error("open($tmp/DEBIAN/$script): $!");
-		print {$out_fd} "#!/bin/sh\n";
-		print {$out_fd} "set -e\n";
-		open(my $in_fd, '<', "debian/$ext$script.debhelper")
-			or error("open(debian/$ext$script.debhelper): $!");
-		while (my $line = <$in_fd>) {
-			print {$out_fd} $line;
+		if (not $dh{NO_ACT}) {
+			open(my $out_fd, '>', "$tmp/DEBIAN/$script") or error("open($tmp/DEBIAN/$script): $!");
+			print {$out_fd} "#!/bin/sh\n";
+			print {$out_fd} "set -e\n";
+			for my $generated_script (@generated_scripts) {
+				open(my $in_fd, '<', $generated_script)
+					or error("open($generated_script) failed: $!");
+				while (my $line = <$in_fd>) {
+					print {$out_fd} $line;
+				}
+				close($in_fd);
+			}
+			close($out_fd) or error("close($tmp/DEBIAN/$script) failed: $!");
 		}
-		close($in_fd);
-		close($out_fd) or error("close($tmp/DEBIAN/$script): $!");
 		reset_perm_and_owner('0755', "$tmp/DEBIAN/$script");
 	}
 }
@@ -1681,9 +1825,17 @@ sub make_symlink{
 	my $dest = shift;
 	my $src = _expand_path(shift);
 	my $tmp = shift;
-        $tmp = '' if not defined($tmp);
-	$src=~s:^/::;
-	$dest=~s:^/::;
+	$tmp = '' if not defined($tmp);
+
+	if ($dest =~ m{(?:^|/)*[.]{2}(?:/|$)}) {
+		error("Invalid destination/link name (contains \"..\"-segments): $dest");
+	}
+
+	$src =~ s{^(?:[.]/+)++}{};
+	$dest =~ s{^(?:[.]/+)++}{};
+
+	$src=~s:^/++::;
+	$dest=~s:^/++::;
 
 	if ($src eq $dest) {
 		warning("skipping link from $src to self");
@@ -1695,8 +1847,8 @@ sub make_symlink{
 	# Policy says that if the link is all within one toplevel
 	# directory, it should be relative. If it's between
 	# top level directories, leave it absolute.
-	my @src_dirs=split(m:/+:,$src);
-	my @dest_dirs=split(m:/+:,$dest);
+	my @src_dirs = grep { $_ ne '.' } split(m:/+:,$src);
+	my @dest_dirs = grep { $_ ne '.' } split(m:/+:,$dest);
 	if (@src_dirs > 0 && $src_dirs[0] eq $dest_dirs[0]) {
 		# Figure out how much of a path $src and $dest
 		# share in common.
